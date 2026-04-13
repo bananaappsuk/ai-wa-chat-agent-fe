@@ -32,7 +32,23 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
     if (res.status === 401) tokenStore.clear();
-    throw new ApiError(res.status, data?.detail || data?.error || res.statusText);
+    const detail = data?.detail ?? data?.error;
+    let msg: string;
+    if (typeof detail === "string") {
+      msg = detail;
+    } else if (Array.isArray(detail)) {
+      msg = detail
+        .map((d: { msg?: string; loc?: (string | number)[] }) => {
+          const field = Array.isArray(d?.loc) ? d.loc.filter((x) => x !== "body").join(".") : "";
+          return field ? `${field}: ${d?.msg || "invalid"}` : d?.msg || "invalid";
+        })
+        .join("; ");
+    } else if (detail && typeof detail === "object") {
+      msg = (detail as { msg?: string }).msg || JSON.stringify(detail);
+    } else {
+      msg = res.statusText || "Request failed";
+    }
+    throw new ApiError(res.status, msg);
   }
   return data as T;
 }
