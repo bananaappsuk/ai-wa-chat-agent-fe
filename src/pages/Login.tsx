@@ -80,7 +80,10 @@ const Login = () => {
         </form>
 
         <p className="text-center text-sm text-muted-foreground mt-6">
-          Don't have an account? <Link to="/signup" className="text-accent hover:underline">Sign up</Link>
+          Don't have an account?{" "}
+          <a href="https://calendly.com/sriram-nextgentechs/ai-advisor" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+            Book a demo
+          </a>
         </p>
       </div>
     </div>
