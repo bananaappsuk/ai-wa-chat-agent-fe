@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    --background: 220 20% 7%;
+    --foreground: 0 0% 95%;
+
+    --card: 220 18% 10%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 220 18% 10%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 152 100% 25%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 265 37% 34%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 220 15% 15%;
+    --muted-foreground: 220 10% 55%;
+
+    --accent: 152 76% 50%;
+    --accent-foreground: 220 20% 7%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 15% 18%;
+    --input: 220 15% 15%;
+    --ring: 152 76% 50%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 220 20% 9%;
+    --sidebar-foreground: 220 10% 65%;
+    --sidebar-primary: 152 76% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 15% 14%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 220 15% 15%;
+    --sidebar-ring: 152 76% 50%;
+
+    /* Custom tokens */
+    --whatsapp: 152 76% 50%;
+    --purple: 265 37% 34%;
+    --purple-light: 265 45% 55%;
+    --surface: 220 18% 12%;
+    --surface-light: 220 15% 16%;
+    --glass: 220 18% 12%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-card/60 backdrop-blur-xl;
+  }
+  .glass-border {
+    @apply border border-white/5;
+  }
+  .glow-green {
+    box-shadow: 0 0 40px -10px hsl(152 76% 50% / 0.3);
+  }
+  .glow-purple {
+    box-shadow: 0 0 40px -10px hsl(265 45% 55% / 0.3);
+  }
+  .gradient-green {
+    background: linear-gradient(135deg, hsl(152 100% 25%), hsl(152 76% 50%));
+  }
+  .gradient-purple {
+    background: linear-gradient(135deg, hsl(265 37% 34%), hsl(265 45% 55%));
+  }
+  .gradient-hero {
+    background: linear-gradient(180deg, hsl(220 20% 7%) 0%, hsl(220 25% 5%) 100%);
+  }
+  .text-gradient-green {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(152 76% 50%), hsl(152 100% 40%));
+  }
+  .text-gradient-purple {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(265 45% 55%), hsl(280 60% 65%));
+  }
+}
