@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Bot, Megaphone, Users, MessageCircle, Settings, HelpCircle, LogOut, Shield, Send, FileText, History, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Bot, Megaphone, Users, MessageCircle, Settings, HelpCircle, LogOut, Shield, Send, FileText, History, BarChart3, CreditCard } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
@@ -12,6 +12,7 @@ const navItems = [
   { icon: MessageCircle, label: "Live Chat", path: "/live-chat" },
   { icon: History, label: "Activity", path: "/activity" },
   { icon: BarChart3, label: "AI Analytics", path: "/ai-analytics" },
+  { icon: CreditCard, label: "Billing", path: "/billing" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];
 

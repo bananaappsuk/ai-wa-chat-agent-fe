@@ -35,6 +35,8 @@ const Campaigns = () => {
   const [recipFilter, setRecipFilter] = useState("");
   const [recipStatus, setRecipStatus] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [saving, setSaving] = useState(false);
   const [attachment, setAttachment] = useState<MediaUploadResult | null>(null);
 
@@ -385,6 +387,23 @@ const Campaigns = () => {
         return;
       }
 
+      const meta = preview.template_meta;
+      if (meta?.warning_required) {
+        const warn =
+          meta.warning_message ||
+          "The selected WhatsApp template has not yet been approved by Meta.\n\nRecipients outside the 24-hour WhatsApp window will be skipped.";
+        const header = meta.name
+          ? `Template: ${meta.name}\nStatus: ${meta.whatsapp_approval_emoji || "🟡"} ${meta.whatsapp_approval_label || "Under Review"}\n\n`
+          : "";
+        const proceed = window.confirm(
+          `${header}${warn}\n\nClick OK to Continue Anyway, or Cancel to abort launch.`,
+        );
+        if (!proceed) {
+          toast.message("Campaign launch cancelled");
+          return;
+        }
+      }
+
       const reviewMode = full.review_mode || "sample_review";
       const isAi = full.content_mode === "ai_agent";
       // Full review always needs generated+approved recipients before start.
@@ -463,8 +482,23 @@ const Campaigns = () => {
   const formatRecipientError = (r: CampaignRecipient, campaign?: Campaign | null) => {
     const raw = (r.error_code || r.error_message || "").trim();
     if (!raw) return "—";
-    const code = raw.toLowerCase();
+    const code = (r.error_code || "").toLowerCase();
     const openOnly = (campaign?.delivery_scope || "") === "open_window_only";
+    if (code === "template_under_review") {
+      return r.error_message || "Template is Under Review by Meta — closed-window recipient skipped";
+    }
+    if (code === "template_pending") {
+      return r.error_message || "Template is Pending Meta approval — closed-window recipient skipped";
+    }
+    if (code === "template_rejected") {
+      return r.error_message || "Template was Rejected by Meta — closed-window recipient skipped";
+    }
+    if (code === "template_paused") {
+      return r.error_message || "Template is Paused — closed-window recipient skipped";
+    }
+    if (code === "template_not_approved") {
+      return r.error_message || "Template is not approved by Meta — closed-window recipient skipped";
+    }
     if (
       code === "skipped_closed_window" ||
       (openOnly &&
@@ -479,6 +513,33 @@ const Campaigns = () => {
       return "Outside 24h window — approved fallback template required";
     }
     return r.error_message || raw;
+  };
+
+  const templateOptionLabel = (t: WaTemplate) => {
+    const wa = (t.whatsapp_approval_status || "").toLowerCase();
+    const emoji = t.whatsapp_approval_emoji || "";
+    if (wa === "approved" || t.whatsapp_sendable) {
+      return `${emoji || "🟢"} ${t.name} (Approved)`;
+    }
+    if (wa === "under_review" || wa === "pending" || wa === "unsubmitted") {
+      return `${emoji || "🟡"} ${t.name} — Waiting for Meta approval`;
+    }
+    if (wa === "rejected") {
+      return `${emoji || "🔴"} ${t.name} — Rejected`;
+    }
+    if (wa === "paused") {
+      return `${emoji || "🟠"} ${t.name} — Paused`;
+    }
+    return `${t.name}${t.status === "approved" ? "" : ` (${t.status})`}`;
+  };
+
+  const isTemplateSelectable = (t: WaTemplate) => {
+    // Library must be approved; Meta sendable preferred. Unknown Meta status still selectable
+    // (live check happens at send / launch warning). Rejected/paused/under_review disabled.
+    if (t.status !== "approved") return false;
+    const wa = (t.whatsapp_approval_status || "").toLowerCase();
+    if (!wa) return true;
+    return wa === "approved" || !!t.whatsapp_sendable;
   };
 
   const statusBadge = (status: string | null) => {
@@ -501,6 +562,9 @@ const Campaigns = () => {
   };
 
   const filtered = campaigns.filter((c) => c.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize) || 1);
+  const safePage = Math.min(page, totalPages);
+  const pagedCampaigns = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
   const selectedTemplate = templates.find((t) => t.id === form.template_id);
 
   return (
@@ -525,7 +589,10 @@ const Campaigns = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(1);
+            }}
             placeholder="Search campaigns..."
             className="w-full bg-muted rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
           />
@@ -533,6 +600,12 @@ const Campaigns = () => {
       </div>
 
       <div className="bg-card rounded-2xl overflow-hidden">
+        <div className="p-5 flex items-center justify-between flex-wrap gap-2">
+          <h2 className="font-display font-semibold">Campaign List</h2>
+          <span className="px-3 py-1 rounded-full bg-accent/10 text-accent text-xs font-medium">
+            {filtered.length} result{filtered.length === 1 ? "" : "s"}
+          </span>
+        </div>
         {loading ? (
           <p className="p-8 text-sm text-muted-foreground">Loading...</p>
         ) : filtered.length === 0 ? (
@@ -555,7 +628,7 @@ const Campaigns = () => {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((c) => (
+                {pagedCampaigns.map((c) => (
                   <tr key={c.id} className="border-b border-border/60">
                     <td className="px-4 py-3 font-medium">{c.name}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
@@ -656,6 +729,44 @@ const Campaigns = () => {
             </table>
           </div>
         )}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-t border-border">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Per page</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="bg-muted rounded-lg px-2 py-1.5 text-sm"
+            >
+              {[10, 25, 50, 100].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              disabled={safePage <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="px-3 py-1.5 rounded-lg bg-muted text-sm disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-muted-foreground">
+              Page {safePage} of {totalPages}
+            </span>
+            <button
+              disabled={safePage >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="px-3 py-1.5 rounded-lg bg-muted text-sm disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
 
       {showForm && (
@@ -819,14 +930,15 @@ const Campaigns = () => {
                       >
                         <option value="">Select approved template</option>
                         {templates.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name}
+                          <option key={t.id} value={t.id} disabled={!isTemplateSelectable(t)}>
+                            {templateOptionLabel(t)}
                           </option>
                         ))}
                       </select>
                       <p className="text-[11px] text-muted-foreground mt-1">
                         Used for closed 24h windows. Choose manually — nothing is auto-selected. Same
-                        approved templates that already work in Template campaigns.
+                        approved templates that already work in Template campaigns. Under Review templates
+                        are disabled until Meta approves them.
                       </p>
                       {templates
                         .find((t) => t.id === form.fallback_template_id)
@@ -872,8 +984,8 @@ const Campaigns = () => {
                     >
                       <option value="">Free-form</option>
                       {templates.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
+                        <option key={t.id} value={t.id} disabled={!isTemplateSelectable(t)}>
+                          {templateOptionLabel(t)}
                         </option>
                       ))}
                     </select>
@@ -1029,6 +1141,29 @@ const Campaigns = () => {
               <div className="h-full bg-accent" style={{ width: `${detail.progress_percentage || 0}%` }} />
             </div>
 
+            {(() => {
+              const tid = detail.fallback_template_id || detail.template_id;
+              const tpl = templates.find((t) => t.id === tid);
+              if (!tpl && !detail.content_sid) return null;
+              const name = tpl?.name || "Template";
+              const emoji = tpl?.whatsapp_approval_emoji || "";
+              const label = tpl?.whatsapp_approval_label || tpl?.whatsapp_approval_status || tpl?.status || "—";
+              return (
+                <div className="mb-4 rounded-xl border border-border/60 bg-muted/40 px-4 py-3 text-sm">
+                  <p>
+                    <span className="text-muted-foreground">Template:</span>{" "}
+                    <span className="font-medium">{name}</span>
+                  </p>
+                  <p className="mt-1">
+                    <span className="text-muted-foreground">Status:</span>{" "}
+                    <span className="font-medium">
+                      {emoji} {String(label).replace(/_/g, " ")}
+                    </span>
+                  </p>
+                </div>
+              );
+            })()}
+
             {detail.content_mode === "ai_agent" && (
               <div className="mb-4 rounded-xl border border-accent/20 p-3 space-y-2">
                 <p className="text-sm font-medium">
@@ -1078,7 +1213,13 @@ const Campaigns = () => {
                         <p className="mt-1 whitespace-pre-wrap">
                           {String(
                             p.generated_message ||
-                              JSON.stringify(p.generated_template_variables || {}) ||
+                              (p.generated_template_variables &&
+                              Object.keys(p.generated_template_variables as object).length > 0
+                                ? `Template vars: ${JSON.stringify(p.generated_template_variables)}`
+                                : "") ||
+                              (String(p.content_path || "").includes("template")
+                                ? "WhatsApp template (see approved Content Template body in Twilio)"
+                                : "") ||
                               "—",
                           )}
                         </p>

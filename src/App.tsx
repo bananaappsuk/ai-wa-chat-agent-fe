@@ -18,11 +18,13 @@ import Campaigns from "./pages/Campaigns";
 import Agents from "./pages/Agents";
 import LiveChat from "./pages/LiveChat";
 import Settings from "./pages/Settings";
+import WhatsAppTemplatesSettings from "./pages/WhatsAppTemplatesSettings";
 import AdminPanel from "./pages/AdminPanel";
 import Activity from "./pages/Activity";
 import AiAnalytics from "./pages/AiAnalytics";
 import WhatsAppBlast from "./pages/WhatsAppBlast";
 import Templates from "./pages/Templates";
+import Billing from "./pages/Billing";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -52,6 +54,8 @@ const App = () => (
             <Route path="/activity" element={<ProtectedRoute><Activity /></ProtectedRoute>} />
             <Route path="/ai-analytics" element={<ProtectedRoute><AiAnalytics /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/settings/whatsapp-templates" element={<ProtectedRoute><WhatsAppTemplatesSettings /></ProtectedRoute>} />
+            <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>

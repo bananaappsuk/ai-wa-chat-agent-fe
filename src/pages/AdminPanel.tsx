@@ -358,7 +358,8 @@ const AdminPanel = () => {
             >
               <option value="free">free</option>
               <option value="starter">starter</option>
-              <option value="pro">pro</option>
+              <option value="professional">professional</option>
+              <option value="business">business</option>
               <option value="enterprise">enterprise</option>
             </select>
             <button

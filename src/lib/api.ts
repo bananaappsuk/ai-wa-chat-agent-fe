@@ -55,7 +55,8 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
         })
         .join("; ");
     } else if (detail && typeof detail === "object") {
-      msg = (detail as { msg?: string }).msg || "Request failed";
+      const d = detail as { msg?: string; message?: string };
+      msg = d.message || d.msg || "Request failed";
     } else {
       msg = res.statusText || "Request failed";
     }
@@ -92,6 +93,12 @@ export type ApiUser = {
   avatar_url?: string | null;
   notification_preferences?: Record<string, boolean> | null;
   plan: string;
+  subscription_status?: string | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  trial_ends_at?: string | null;
+  current_period_end?: string | null;
+  cancel_at_period_end?: boolean;
   role: "user" | "agent" | "moderator" | "admin";
   banned: boolean;
   active?: boolean;
@@ -449,18 +456,39 @@ export type WaTemplate = {
   user_id: string;
   name: string;
   content_sid: string;
+  content_sid_masked?: string;
   language: string;
   status: TemplateStatus;
   variables: string[];
   created_at: string;
   updated_at: string;
+  whatsapp_approval_status?: string | null;
+  whatsapp_approval_label?: string | null;
+  whatsapp_approval_emoji?: string | null;
+  whatsapp_category?: string | null;
+  whatsapp_sendable?: boolean;
+  business_initiated?: boolean | null;
+  user_initiated?: boolean | null;
+  provider?: string;
+  friendly_name?: string;
+  whatsapp_approval_checked_at?: string | null;
 };
 
 export const templates = {
-  list: () => api.get<WaTemplate[]>("/templates"),
+  list: (params?: { status?: string; whatsapp_status?: string; q?: string; refresh?: boolean }) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", params.status);
+    if (params?.whatsapp_status) qs.set("whatsapp_status", params.whatsapp_status);
+    if (params?.q) qs.set("q", params.q);
+    if (params?.refresh) qs.set("refresh", "true");
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<WaTemplate[]>(`/templates${suffix}`);
+  },
+  get: (id: string) => api.get<WaTemplate>(`/templates/${id}`),
   create: (b: Partial<WaTemplate>) => api.post<WaTemplate>("/templates", b),
   update: (id: string, b: Partial<WaTemplate>) => api.patch<WaTemplate>(`/templates/${id}`, b),
   remove: (id: string) => api.del<void>(`/templates/${id}`),
+  refreshStatus: (id: string) => api.post<WaTemplate>(`/templates/${id}/refresh-status`, {}),
 };
 
 export type SocialLinks = {
@@ -666,18 +694,33 @@ export const campaigns = {
       total_selected: number;
       eligible: number;
       eligible_freeform_ai?: number;
+      eligible_ai_freeform?: number;
       eligible_template_ai?: number;
+      eligible_template_fallback?: number;
       eligible_template_static?: number;
       opted_out: number;
       no_consent: number;
       blacklisted: number;
       closed_window: number;
+      skipped_closed_window?: number;
       closed_window_missing_template?: number;
       template_required: number;
+      template_not_approved?: number;
       invalid_number: number;
       duplicates_removed: number;
       other_blocked: number;
       samples?: Array<Record<string, unknown>>;
+      template_meta?: {
+        name?: string | null;
+        content_sid?: string | null;
+        content_sid_masked?: string | null;
+        whatsapp_approval_status?: string | null;
+        whatsapp_approval_label?: string | null;
+        whatsapp_approval_emoji?: string | null;
+        whatsapp_sendable?: boolean;
+        warning_required?: boolean;
+        warning_message?: string | null;
+      };
     }>(`/campaigns/${id}/eligibility-preview`),
   aiPreview: (id: string, body?: { preview_count?: number; regenerate?: boolean; selected_lead_ids?: string[] }) =>
     api.post<{ campaign_id: string; previews: Array<Record<string, unknown>>; count: number }>(
@@ -996,4 +1039,85 @@ export const blacklist = {
   list: () => api.get<Array<{ id: string; phone: string; reason?: string }>>("/blacklist"),
   add: (phone: string, reason?: string) => api.post<{ ok: boolean }>("/blacklist", { phone, reason }),
   remove: (phone: string) => api.del<{ ok: boolean }>("/blacklist", { phone }),
+};
+
+export type BillingPlan = {
+  key: string;
+  name: string;
+  price_gbp: number | null;
+  price_display: string;
+  period: string;
+  popular: boolean;
+  stripe_checkout: boolean;
+  contact_sales: boolean;
+  features: string[];
+  entitlements: Record<string, unknown>;
+  cta: string;
+};
+
+export type BillingSubscription = {
+  plan: string;
+  plan_name: string;
+  price_display?: string | null;
+  billing_cycle?: string;
+  subscription_status: string;
+  stripe_mode?: string;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  stripe_price_id?: string | null;
+  stripe_product_id?: string | null;
+  trial_start?: string | null;
+  trial_ends_at?: string | null;
+  trial_days_remaining?: number | null;
+  current_period_start?: string | null;
+  current_period_end?: string | null;
+  cancel_at_period_end: boolean;
+  cancelled_at?: string | null;
+  latest_invoice_id?: string | null;
+  last_payment_status?: string | null;
+  last_payment_at?: string | null;
+  entitlements: Record<string, unknown>;
+  has_active_subscription: boolean;
+  can_checkout: boolean;
+  can_manage: boolean;
+  use_portal_for_changes?: boolean;
+};
+
+export type BillingInvoice = {
+  id: string;
+  number?: string | null;
+  status?: string | null;
+  currency?: string | null;
+  amount_due?: number | null;
+  amount_paid?: number | null;
+  created?: number | null;
+  hosted_invoice_url?: string | null;
+  invoice_pdf?: string | null;
+  period_start?: number | null;
+  period_end?: number | null;
+};
+
+export const billing = {
+  plans: () =>
+    api.get<{
+      plans: BillingPlan[];
+      trial_days: number;
+      currency: string;
+      billing_cycle?: string;
+      stripe_mode?: string;
+      publishable_key?: string | null;
+      contact_sales_url: string;
+      disclaimer: string;
+      addons_note: string;
+    }>("/billing/plans"),
+  subscription: () => api.get<BillingSubscription>("/billing/subscription"),
+  invoices: (params?: { limit?: number; starting_after?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.starting_after) q.set("starting_after", params.starting_after);
+    const s = q.toString() ? `?${q}` : "";
+    return api.get<{ items: BillingInvoice[]; has_more?: boolean }>(`/billing/invoices${s}`);
+  },
+  checkout: (plan: string) => api.post<{ url: string }>("/billing/checkout", { plan }),
+  portal: () => api.post<{ url: string }>("/billing/portal"),
 };

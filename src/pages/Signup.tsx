@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -13,6 +13,8 @@ const Signup = () => {
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const selectedPlan = (searchParams.get("plan") || "").trim().toLowerCase();
 
   const update = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
@@ -90,7 +92,11 @@ const Signup = () => {
         phone: form.phone.trim(),
       });
       toast.success("Account created!", { description: "You're now logged in." });
-      navigate("/dashboard");
+      if (selectedPlan && ["starter", "professional", "business"].includes(selectedPlan)) {
+        navigate(`/billing?plan=${encodeURIComponent(selectedPlan)}`);
+      } else {
+        navigate("/dashboard");
+      }
     } catch (err) {
       toast.error("Signup failed", { description: (err as Error).message });
     } finally {

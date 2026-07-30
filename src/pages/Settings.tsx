@@ -1,6 +1,7 @@
 import AppLayout from "@/components/AppLayout";
 import { User, ArrowUp, Save } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { auth, profile as profileApi, settingsApi, AiSettings } from "@/lib/api";
@@ -21,6 +22,7 @@ const passwordHints = (pw: string) => {
 
 const Settings = () => {
   const { user, refresh } = useAuth();
+  const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState({
     full_name: "",
@@ -193,7 +195,13 @@ const Settings = () => {
     <AppLayout>
       <div className="max-w-5xl">
         <h1 className="text-3xl md:text-4xl font-display font-bold mb-2">Account Settings</h1>
-        <p className="text-muted-foreground mb-8">Manage your workspace preferences and personal details.</p>
+        <p className="text-muted-foreground mb-4">Manage your workspace preferences and personal details.</p>
+        <Link
+          to="/settings/whatsapp-templates"
+          className="inline-flex items-center gap-2 mb-8 px-4 py-2.5 rounded-xl border border-accent/30 bg-accent/10 text-sm hover:border-accent/50 transition-colors"
+        >
+          WhatsApp Templates — Meta approval status & Content SIDs
+        </Link>
 
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
@@ -639,7 +647,11 @@ const Settings = () => {
                   {profile.plan} Plan
                 </span>
               </div>
-              <button className="w-full py-2.5 rounded-xl gradient-green text-sm font-medium text-primary-foreground flex items-center justify-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => navigate("/billing")}
+                className="w-full py-2.5 rounded-xl gradient-green text-sm font-medium text-primary-foreground flex items-center justify-center gap-1.5"
+              >
                 <ArrowUp className="w-3.5 h-3.5" /> Upgrade Plan
               </button>
             </div>
