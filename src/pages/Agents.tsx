@@ -1,12 +1,15 @@
 import AppLayout from "@/components/AppLayout";
-import { Plus, Bot, Play, Settings, X, Trash2, Pencil } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Plus, Bot, Play, Settings, X, Trash2, Pencil, Upload } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { agents as agentsApi, Agent, SocialLinks } from "@/lib/api";
+import { agents as agentsApi, Agent, AgentKind, SocialLinks } from "@/lib/api";
+
+const KB_MAX = 10000;
 
 type FormState = {
   name: string;
+  kind: AgentKind;
   prompt: string;
   tone: "sales" | "support" | "neutral";
   knowledge_base: string;
@@ -18,11 +21,17 @@ type FormState = {
   website_url: string;
   welcome_message: string;
   terms_text: string;
+  support_email: string;
+  business_hours: string;
+  booking_link: string;
+  price_floor: string;
+  price_ceiling: string;
   social_links: SocialLinks;
 };
 
 const emptyForm: FormState = {
   name: "",
+  kind: "inbound",
   prompt: "",
   tone: "neutral",
   knowledge_base: "",
@@ -34,7 +43,28 @@ const emptyForm: FormState = {
   website_url: "",
   welcome_message: "",
   terms_text: "",
+  support_email: "",
+  business_hours: "",
+  booking_link: "",
+  price_floor: "",
+  price_ceiling: "",
   social_links: {},
+};
+
+const isValidHttpUrl = (value: string): boolean => {
+  try {
+    const u = new URL(value);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const parseOptionalNumber = (value: string): number | null => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : NaN;
 };
 
 const Agents = () => {
@@ -45,6 +75,8 @@ const Agents = () => {
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [kbUploading, setKbUploading] = useState(false);
+  const kbFileRef = useRef<HTMLInputElement>(null);
 
   const fetchAgents = async () => {
     try {
@@ -69,6 +101,7 @@ const Agents = () => {
     setEditingAgent(a);
     setForm({
       name: a.name,
+      kind: a.kind || "inbound",
       prompt: a.prompt || "",
       tone: a.tone || "neutral",
       knowledge_base: a.knowledge_base || "",
@@ -80,17 +113,85 @@ const Agents = () => {
       website_url: a.website_url || "",
       welcome_message: a.welcome_message || "",
       terms_text: a.terms_text || "",
+      support_email: a.support_email || "",
+      business_hours: a.business_hours || "",
+      booking_link: a.booking_link || "",
+      price_floor: a.price_floor || "",
+      price_ceiling: a.price_ceiling || "",
       social_links: a.social_links || {},
     });
     setShowForm(true);
   };
 
+  const mergeKnowledgeText = (incoming: string, source: string) => {
+    const chunk = incoming.trim();
+    if (!chunk) return;
+    const header = `\n\n--- From file: ${source} ---\n`;
+    const current = form.knowledge_base.trim();
+    let next = current ? `${current}${header}${chunk}` : `${header.trim()}\n${chunk}`;
+    if (next.length > KB_MAX) {
+      next = next.slice(0, KB_MAX);
+      toast.message("Knowledge base truncated to 10,000 characters");
+    }
+    setForm((prev) => ({ ...prev, knowledge_base: next }));
+  };
+
+  const handleKnowledgeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setKbUploading(true);
+    try {
+      const result = await agentsApi.extractKnowledge(file);
+      mergeKnowledgeText(result.text, result.filename);
+      toast.success(`Added text from ${result.filename} (${result.chars} chars)`);
+    } catch (err) {
+      toast.error("Knowledge upload failed", { description: (err as Error).message });
+    } finally {
+      setKbUploading(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!form.name.trim()) { toast.error("Agent name is required"); return; }
+
+    const booking = form.booking_link.trim();
+    if (booking && !isValidHttpUrl(booking)) {
+      toast.error("Booking link must be a valid http(s) URL (e.g. https://ittalenthub.co.uk/contact)");
+      return;
+    }
+    for (const [label, value] of [
+      ["Website URL", form.website_url],
+      ["CTA URL", form.cta_url],
+      ["Logo URL", form.logo_url],
+    ] as const) {
+      const v = value.trim();
+      if (v && !isValidHttpUrl(v)) {
+        toast.error(`${label} must be a valid http(s) URL`);
+        return;
+      }
+    }
+
+    const floor = parseOptionalNumber(form.price_floor);
+    const ceiling = parseOptionalNumber(form.price_ceiling);
+    if (Number.isNaN(floor)) {
+      toast.error("Price floor must be a number");
+      return;
+    }
+    if (Number.isNaN(ceiling)) {
+      toast.error("Price ceiling must be a number");
+      return;
+    }
+    if (floor !== null && ceiling !== null && ceiling < floor) {
+      toast.error("Price ceiling cannot be lower than price floor");
+      return;
+    }
+
     if (!user) return;
     setSaving(true);
     const payload = {
       name: form.name.trim(),
+      kind: form.kind,
       prompt: form.prompt.trim() || null,
       tone: form.tone,
       knowledge_base: form.knowledge_base.trim() || null,
@@ -102,6 +203,11 @@ const Agents = () => {
       website_url: form.website_url.trim() || null,
       welcome_message: form.welcome_message.trim() || null,
       terms_text: form.terms_text.trim() || null,
+      support_email: form.support_email.trim() || null,
+      business_hours: form.business_hours.trim() || null,
+      booking_link: booking || null,
+      price_floor: form.price_floor.trim() || null,
+      price_ceiling: form.price_ceiling.trim() || null,
       social_links: form.social_links,
     };
     try {
@@ -194,7 +300,7 @@ const Agents = () => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm truncate">{a.name}</p>
-                  <p className="text-xs text-muted-foreground capitalize">{a.tone} · {a.status}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{a.kind || "inbound"} · {a.tone} · {a.status}</p>
                 </div>
                 <span className={`text-xs font-medium flex items-center gap-1 ${a.status === "active" ? "text-accent" : "text-muted-foreground"}`}>
                   ● {a.status === "active" ? "ACTIVE" : "INACTIVE"}
@@ -255,7 +361,17 @@ const Agents = () => {
                   className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 resize-none" />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1.5 block">Agent Kind</label>
+                  <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as AgentKind })}
+                    className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 appearance-none">
+                    <option value="inbound">Inbound</option>
+                    <option value="outbound">Outbound</option>
+                    <option value="sales">Sales</option>
+                    <option value="support">Support</option>
+                  </select>
+                </div>
                 <div>
                   <label className="text-sm text-muted-foreground mb-1.5 block">Tone</label>
                   <select value={form.tone} onChange={(e) => setForm({ ...form, tone: e.target.value as FormState["tone"] })}
@@ -272,6 +388,38 @@ const Agents = () => {
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
                   </select>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1.5 block">Support Email</label>
+                  <input type="email" value={form.support_email} onChange={(e) => setForm({ ...form, support_email: e.target.value })} placeholder="support@example.com" maxLength={200}
+                    className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1.5 block">Booking Link</label>
+                  <input type="url" value={form.booking_link} onChange={(e) => setForm({ ...form, booking_link: e.target.value })} placeholder="https://cal.example.com/book" maxLength={500}
+                    className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm text-muted-foreground mb-1.5 block">Business Hours</label>
+                <input value={form.business_hours} onChange={(e) => setForm({ ...form, business_hours: e.target.value })} placeholder="Mon–Fri 9:00–17:00 GMT" maxLength={200}
+                  className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30" />
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1.5 block">Price Floor</label>
+                  <input type="number" inputMode="decimal" value={form.price_floor} onChange={(e) => setForm({ ...form, price_floor: e.target.value })} placeholder="e.g. 50" maxLength={50}
+                    className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1.5 block">Price Ceiling</label>
+                  <input type="number" inputMode="decimal" value={form.price_ceiling} onChange={(e) => setForm({ ...form, price_ceiling: e.target.value })} placeholder="e.g. 500" maxLength={50}
+                    className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30" />
                 </div>
               </div>
 
@@ -330,9 +478,38 @@ const Agents = () => {
               </div>
 
               <div>
-                <label className="text-sm text-muted-foreground mb-1.5 block">Knowledge Base</label>
-                <textarea value={form.knowledge_base} onChange={(e) => setForm({ ...form, knowledge_base: e.target.value })} placeholder="Paste FAQ content, product docs, or training text..." rows={4} maxLength={10000}
-                  className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 resize-none" />
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="text-sm text-muted-foreground">Knowledge Base</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={kbFileRef}
+                      type="file"
+                      accept=".txt,.md,.csv,.pdf,text/plain,text/markdown,text/csv,application/pdf"
+                      className="hidden"
+                      onChange={handleKnowledgeUpload}
+                    />
+                    <button
+                      type="button"
+                      disabled={kbUploading}
+                      onClick={() => kbFileRef.current?.click()}
+                      className="text-xs px-2.5 py-1.5 rounded-lg glass glass-border hover:bg-muted disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      {kbUploading ? "Uploading..." : "Upload file / PDF"}
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  value={form.knowledge_base}
+                  onChange={(e) => setForm({ ...form, knowledge_base: e.target.value })}
+                  placeholder="Paste FAQ content, product docs, or upload a .txt / .md / .csv / .pdf file..."
+                  rows={5}
+                  maxLength={KB_MAX}
+                  className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 resize-none"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {form.knowledge_base.length}/{KB_MAX} characters · Upload extracts text and appends it here (you can still edit).
+                </p>
               </div>
 
               <div className="flex gap-3 pt-2">

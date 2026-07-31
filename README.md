@@ -4,13 +4,15 @@ React + Vite + Tailwind UI for the WhatsApp AI CRM. Talks to the FastAPI backend
 
 ## Run locally
 
-Prereqs: Node 18+, the backend running on `http://localhost:8000` (see `../be/README.md`).
+Prereqs: Node 20+, the backend running on `http://localhost:8000` (see `../ai-wa-chat-agent-be/README.md`).
 
 ```bash
-npm install
-cp .env.example .env   # then edit if your API URL is different
+npm ci
+# optional: echo VITE_API_URL=http://localhost:8000 > .env
 npm run dev
 ```
+
+Production: set `VITE_API_URL` to the HTTPS API origin at **build** time (Vercel env). Never embed Twilio/OpenAI secrets in the frontend.
 
 App runs on http://localhost:8080.
 

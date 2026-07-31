@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Bot, Megaphone, Users, MessageCircle, Settings, X, LogOut, Shield, Send } from "lucide-react";
+import { LayoutDashboard, Bot, Megaphone, Users, MessageCircle, Settings, X, LogOut, Shield, Send, History, CreditCard } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
@@ -9,6 +9,8 @@ const navItems = [
   { icon: Send, label: "WA Blast", path: "/whatsapp-blast" },
   { icon: Users, label: "Leads", path: "/leads" },
   { icon: MessageCircle, label: "Live Chat", path: "/live-chat" },
+  { icon: History, label: "Activity", path: "/activity" },
+  { icon: CreditCard, label: "Billing", path: "/billing" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];
 

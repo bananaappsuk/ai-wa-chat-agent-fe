@@ -98,7 +98,7 @@ const Login = () => {
             {errors.password && <p className="text-xs text-red-400 mt-1">{errors.password}</p>}
           </div>
           <div className="flex justify-end">
-            <a href={`mailto:sriram@nextgentechs.io?subject=Password reset request`} className="text-xs text-accent hover:underline">Forgot password?</a>
+            <Link to="/forgot-password" className="text-xs text-accent hover:underline">Forgot password?</Link>
           </div>
           <button type="submit" disabled={loading} className="block w-full py-3 rounded-xl gradient-green text-center text-sm font-medium text-primary-foreground glow-green disabled:opacity-50">
             {loading ? "Signing in..." : "Sign In"}
@@ -107,6 +107,10 @@ const Login = () => {
 
         <p className="text-center text-sm text-muted-foreground mt-6">
           Don't have an account?{" "}
+          <Link to="/signup" className="text-accent hover:underline">
+            Sign up
+          </Link>
+          {" · "}
           <a href={BOOK_DEMO_URL} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
             Book a demo
           </a>

@@ -1,5 +1,5 @@
-import { Link, useNavigate } from "react-router-dom";
-import { MessageCircle } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Eye, EyeOff, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -11,7 +11,10 @@ const Signup = () => {
   const [form, setForm] = useState({ name: "", email: "", company: "", phone: "+44 ", password: "" });
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
+  const [showPw, setShowPw] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const selectedPlan = (searchParams.get("plan") || "").trim().toLowerCase();
 
   const update = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
@@ -89,7 +92,11 @@ const Signup = () => {
         phone: form.phone.trim(),
       });
       toast.success("Account created!", { description: "You're now logged in." });
-      navigate("/dashboard");
+      if (selectedPlan && ["starter", "professional", "business"].includes(selectedPlan)) {
+        navigate(`/billing?plan=${encodeURIComponent(selectedPlan)}`);
+      } else {
+        navigate("/dashboard");
+      }
     } catch (err) {
       toast.error("Signup failed", { description: (err as Error).message });
     } finally {
@@ -122,6 +129,36 @@ const Signup = () => {
         <form onSubmit={handleSignup} className="bg-card rounded-2xl p-6 space-y-4">
           {fields.map((f) => {
             const fieldError = errors[f.key as keyof FormErrors];
+            if (f.key === "password") {
+              return (
+                <div key={f.key}>
+                  <label className="text-sm text-muted-foreground mb-1.5 block">{f.label}</label>
+                  <div className="relative">
+                    <input
+                      type={showPw ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={form.password}
+                      onChange={update("password")}
+                      placeholder={f.placeholder}
+                      maxLength={f.maxLength}
+                      className={`w-full bg-muted rounded-xl px-4 py-3 pr-12 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 ${
+                        fieldError ? "ring-2 ring-red-500/50" : "focus:ring-accent/30"
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPw((s) => !s)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      aria-label={showPw ? "Hide password" : "Show password"}
+                      tabIndex={-1}
+                    >
+                      {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {fieldError && <p className="text-xs text-red-400 mt-1">{fieldError}</p>}
+                </div>
+              );
+            }
             return (
               <div key={f.key}>
                 <label className="text-sm text-muted-foreground mb-1.5 block">{f.label}</label>

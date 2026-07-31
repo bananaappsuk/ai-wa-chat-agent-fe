@@ -4,7 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { blasts as blastsApi, Blast } from "@/lib/api";
+import { blasts as blastsApi, templates as templatesApi, mediaApi, Blast, WaTemplate, MediaUploadResult } from "@/lib/api";
+import { ChatSocket } from "@/lib/ws";
+
+const BLAST_PURPOSES = ["conversational", "support", "transactional", "marketing"] as const;
 
 interface ParsedNumber {
   phone: string;
@@ -34,6 +37,13 @@ const WhatsAppBlast = () => {
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState({ sent: 0, failed: 0, total: 0 });
   const [manualInput, setManualInput] = useState("");
+  const [approvedTemplates, setApprovedTemplates] = useState<WaTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [templateVars, setTemplateVars] = useState<Record<string, string>>({});
+  const [messagePurpose, setMessagePurpose] = useState<(typeof BLAST_PURPOSES)[number]>("conversational");
+  const [attachment, setAttachment] = useState<MediaUploadResult | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
 
   const [blasts, setBlasts] = useState<Blast[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -51,7 +61,81 @@ const WhatsAppBlast = () => {
     }
   };
 
-  useEffect(() => { fetchBlasts(); }, []);
+  useEffect(() => {
+    fetchBlasts();
+    templatesApi
+      .list()
+      .then((data) => setApprovedTemplates(data.filter((t) => t.status === "approved")))
+      .catch(() => setApprovedTemplates([]));
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const socket = new ChatSocket();
+    socket.connect(() => {
+      fetchBlasts();
+    });
+    const off = socket.on((evt) => {
+      if (evt.event !== "blast:updated") return;
+      const data = evt.data as {
+        id?: string;
+        sent_count?: number;
+        failed_count?: number;
+        delivered_count?: number;
+        read_count?: number;
+        undelivered_count?: number;
+        status?: string;
+        total_recipients?: number;
+        recipient_id?: string;
+        recipient_status?: string;
+      };
+      if (!data?.id) return;
+      setBlasts((prev) =>
+        prev.map((b) =>
+          b.id === data.id
+            ? {
+                ...b,
+                sent_count: data.sent_count ?? b.sent_count,
+                failed_count: data.failed_count ?? b.failed_count,
+                delivered_count: data.delivered_count ?? b.delivered_count,
+                read_count: data.read_count ?? b.read_count,
+                undelivered_count: data.undelivered_count ?? b.undelivered_count,
+                status: data.status ?? b.status,
+                total_recipients: data.total_recipients ?? b.total_recipients,
+              }
+            : b
+        )
+      );
+      setSendProgress((prev) => ({
+        sent: data.sent_count ?? prev.sent,
+        failed: data.failed_count ?? prev.failed,
+        total: data.total_recipients ?? prev.total,
+      }));
+      setViewingBlast((cur) => {
+        if (!cur || cur.id !== data.id) return cur;
+        return {
+          ...cur,
+          sent_count: data.sent_count ?? cur.sent_count,
+          failed_count: data.failed_count ?? cur.failed_count,
+          delivered_count: data.delivered_count ?? cur.delivered_count,
+          read_count: data.read_count ?? cur.read_count,
+          undelivered_count: data.undelivered_count ?? cur.undelivered_count,
+          status: data.status ?? cur.status,
+        };
+      });
+      if (data.recipient_id && data.recipient_status) {
+        setViewRecipients((prev) =>
+          prev.map((r) =>
+            r.id === data.recipient_id ? { ...r, status: data.recipient_status! } : r
+          )
+        );
+      }
+    });
+    return () => {
+      off();
+      socket.close();
+    };
+  }, [user]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -117,7 +201,19 @@ const WhatsAppBlast = () => {
   const validNumbers = parsedNumbers.filter(n => n.valid);
 
   const handleSendBlast = async () => {
-    if (!user || !campaignName.trim() || !message.trim() || validNumbers.length === 0) return;
+    if (!user || !campaignName.trim() || validNumbers.length === 0) return;
+    if (selectedTemplateId && attachment) {
+      toast.error("Cannot attach media to a template blast");
+      return;
+    }
+    if (!selectedTemplateId && !message.trim() && !attachment) {
+      toast.error("Provide a free-form message, media, or an approved template");
+      return;
+    }
+    if (selectedTemplateId && !BLAST_PURPOSES.includes(messagePurpose)) {
+      toast.error("Select a valid message purpose");
+      return;
+    }
     setSending(true);
     setStep("sending");
     setSendProgress({ sent: 0, failed: 0, total: validNumbers.length });
@@ -125,13 +221,19 @@ const WhatsAppBlast = () => {
     try {
       const created = await blastsApi.create({
         name: campaignName.trim(),
-        message: message.trim(),
-        recipients: validNumbers.map(n => n.phone),
+        message: selectedTemplateId ? message.trim() || undefined : message.trim() || undefined,
+        recipients: validNumbers.map((n) => n.phone),
+        template_id: selectedTemplateId || undefined,
+        content_variables:
+          selectedTemplateId && Object.keys(templateVars).length ? templateVars : undefined,
+        media_url: !selectedTemplateId ? (attachment?.url || attachment?.path) : undefined,
+        message_purpose: messagePurpose,
       });
       toast.success("Blast queued — sending in background");
       setSendProgress({ sent: created.sent_count, failed: created.failed_count, total: created.total_recipients });
     } catch (err) {
       toast.error("Failed to queue blast", { description: (err as Error).message });
+      setStep("configure");
     } finally {
       setSending(false);
       fetchBlasts();
@@ -165,6 +267,10 @@ const WhatsAppBlast = () => {
     setCampaignName("");
     setMessage("");
     setManualInput("");
+    setSelectedTemplateId("");
+    setTemplateVars({});
+    setMessagePurpose("conversational");
+    setAttachment(null);
     setSendProgress({ sent: 0, failed: 0, total: 0 });
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -275,7 +381,105 @@ const WhatsAppBlast = () => {
                 />
               </div>
               <div>
-                <label className="text-sm text-muted-foreground mb-1.5 block">Message *</label>
+                <label className="text-sm text-muted-foreground mb-1.5 block">Approved Template (required outside 24h window)</label>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setSelectedTemplateId(id);
+                    if (id) setAttachment(null);
+                    const t = approvedTemplates.find((x) => x.id === id);
+                    const next: Record<string, string> = {};
+                    (t?.variables || []).forEach((k) => {
+                      next[k] = templateVars[k] || "";
+                    });
+                    setTemplateVars(next);
+                  }}
+                  className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                >
+                  <option value="">Free-form</option>
+                  {approvedTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.content_sid})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {selectedTemplateId &&
+                (approvedTemplates.find((t) => t.id === selectedTemplateId)?.variables || []).map((key) => (
+                  <div key={key}>
+                    <label className="text-sm text-muted-foreground mb-1.5 block">Variable {`{{${key}}}`}</label>
+                    <input
+                      value={templateVars[key] || ""}
+                      onChange={(e) => setTemplateVars((prev) => ({ ...prev, [key]: e.target.value }))}
+                      className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                    />
+                  </div>
+                ))}
+              <div>
+                <label className="text-sm text-muted-foreground mb-1.5 block">Message purpose *</label>
+                <select
+                  value={messagePurpose}
+                  onChange={(e) => setMessagePurpose(e.target.value as typeof messagePurpose)}
+                  className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                >
+                  {BLAST_PURPOSES.map((p) => (
+                    <option key={p} value={p}>
+                      {p.charAt(0).toUpperCase() + p.slice(1)}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use <span className="text-foreground">Conversational</span> for testing.
+                  <span className="text-foreground"> Marketing</span> only works for opted-in WhatsApp contacts.
+                </p>
+              </div>
+              {!selectedTemplateId && (
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1.5 block">Optional media (free-form only)</label>
+                  <input
+                    ref={mediaInputRef}
+                    type="file"
+                    className="hidden"
+                    accept="image/*,audio/*,video/mp4,application/pdf"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!file) return;
+                      setUploading(true);
+                      try {
+                        setAttachment(await mediaApi.upload(file));
+                      } catch (err) {
+                        toast.error("Upload failed", { description: (err as Error).message });
+                      } finally {
+                        setUploading(false);
+                      }
+                    }}
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => mediaInputRef.current?.click()}
+                      disabled={uploading}
+                      className="px-4 py-2 rounded-xl glass glass-border text-sm disabled:opacity-50"
+                    >
+                      {uploading ? "Uploading..." : attachment ? "Replace file" : "Attach file"}
+                    </button>
+                    {attachment && (
+                      <>
+                        <span className="text-xs text-muted-foreground truncate">{attachment.filename}</span>
+                        <button type="button" onClick={() => setAttachment(null)} className="text-xs text-destructive">
+                          Remove
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div>
+                <label className="text-sm text-muted-foreground mb-1.5 block">
+                  {selectedTemplateId ? "Optional note / free-form fallback label" : "Message"}
+                </label>
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
@@ -291,14 +495,17 @@ const WhatsAppBlast = () => {
                 <AlertCircle className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-xs text-muted-foreground">
-                    Messages are sent via Twilio WhatsApp. Blacklisted numbers are skipped automatically.
+                    Free-form blasts only deliver to recipients inside the 24-hour WhatsApp window.
+                    Recipients with no recent inbound (or no lead) need an approved template.
+                    Marketing purpose requires explicit WhatsApp opt-in — for sandbox testing choose Conversational + template.
+                    Media requires PUBLIC_BASE_URL so Twilio can fetch the file. Blacklisted numbers are skipped.
                   </p>
                 </div>
               </div>
 
               <button
                 onClick={() => setStep("review")}
-                disabled={!campaignName.trim() || !message.trim()}
+                disabled={!campaignName.trim() || (!selectedTemplateId && !message.trim() && !attachment)}
                 className="w-full py-3 rounded-xl gradient-green text-sm font-medium text-primary-foreground disabled:opacity-50"
               >
                 Review & Send →
@@ -344,7 +551,23 @@ const WhatsAppBlast = () => {
             </div>
             <div className="bg-muted rounded-xl p-4">
               <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Message</p>
-              <p className="text-sm whitespace-pre-wrap">{message}</p>
+              {selectedTemplateId ? (
+                <p className="text-sm">
+                  Template: {approvedTemplates.find((t) => t.id === selectedTemplateId)?.name || selectedTemplateId}
+                  {message.trim() ? (
+                    <span className="block mt-2 whitespace-pre-wrap text-muted-foreground">{message}</span>
+                  ) : null}
+                </p>
+              ) : (
+                <p className="text-sm whitespace-pre-wrap">{message}</p>
+              )}
+            </div>
+            <div className="bg-muted rounded-xl p-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Purpose</p>
+              <p className="font-medium capitalize">{messagePurpose}</p>
+              {messagePurpose === "marketing" && (
+                <p className="text-xs text-yellow-400 mt-1">Requires opted-in WhatsApp consent for each number</p>
+              )}
             </div>
             <div className="bg-muted rounded-xl p-4">
               <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Recipients</p>
@@ -415,6 +638,9 @@ const WhatsAppBlast = () => {
                   </div>
                   <div className="lg:w-1/4">
                     <p className="text-xs text-muted-foreground truncate">{b.message}</p>
+                    {b.status === "failed" && b.last_error && (
+                      <p className="text-[11px] text-destructive mt-1 line-clamp-2">{b.last_error}</p>
+                    )}
                   </div>
                   <div className="lg:w-1/6">
                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${
@@ -428,6 +654,10 @@ const WhatsAppBlast = () => {
                   </div>
                   <div className="lg:w-1/6 text-xs text-muted-foreground">
                     {b.sent_count}/{b.total_recipients} sent
+                    {typeof b.delivered_count === "number" && b.delivered_count > 0
+                      ? ` · ${b.delivered_count} delivered`
+                      : ""}
+                    {b.failed_count > 0 ? ` · ${b.failed_count} failed` : ""}
                   </div>
                   <div className="flex items-center gap-2 lg:w-1/6 justify-end">
                     <button onClick={() => handleViewBlast(b)} className="p-2 rounded-lg hover:bg-muted">
