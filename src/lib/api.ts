@@ -349,6 +349,8 @@ export type Message = {
   agent_id?: string | null;
   agent_name?: string | null;
   message_purpose?: string | null;
+  provider?: "twilio" | "meta";
+  provider_message_id?: string | null;
   twilio_sid?: string | null;
   error?: string | null;
   error_code?: string | null;
