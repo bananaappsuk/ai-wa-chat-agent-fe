@@ -65,7 +65,11 @@ const WhatsAppBlast = () => {
     fetchBlasts();
     templatesApi
       .list()
-      .then((data) => setApprovedTemplates(data.filter((t) => t.status === "approved")))
+      .then((data) =>
+        setApprovedTemplates(
+          data.filter((t) => t.status === "approved" && t.provider !== "meta" && !!t.content_sid),
+        ),
+      )
       .catch(() => setApprovedTemplates([]));
   }, []);
 

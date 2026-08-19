@@ -98,7 +98,9 @@ const Campaigns = () => {
       .catch(() => setLeads([]));
     templatesApi
       .list()
-      .then((t) => setTemplates(t.filter((x) => x.status === "approved")))
+      .then((t) =>
+        setTemplates(t.filter((x) => x.status === "approved" && x.provider !== "meta" && !!x.content_sid)),
+      )
       .catch(() => setTemplates([]));
     agentsApi
       .options()

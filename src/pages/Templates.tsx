@@ -31,6 +31,7 @@ const Templates = () => {
   const [items, setItems] = useState<WaTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncingMeta, setSyncingMeta] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<WaTemplate | null>(null);
@@ -111,6 +112,19 @@ const Templates = () => {
     }
   };
 
+  const handleSyncMeta = async () => {
+    setSyncingMeta(true);
+    try {
+      const result = await templatesApi.syncMeta();
+      toast.success(`Synced ${result.synced} Meta template${result.synced === 1 ? "" : "s"}`);
+      await load();
+    } catch (err) {
+      toast.error("Meta sync failed", { description: (err as Error).message });
+    } finally {
+      setSyncingMeta(false);
+    }
+  };
+
   const handleDelete = async (t: WaTemplate) => {
     if (!confirm(`Delete template "${t.name}"?`)) return;
     try {
@@ -165,6 +179,15 @@ const Templates = () => {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
+            onClick={handleSyncMeta}
+            disabled={syncingMeta || refreshing}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass glass-border text-sm font-medium disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncingMeta ? "animate-spin" : ""}`} />
+            Sync from Meta
+          </button>
+          <button
+            type="button"
             onClick={() => load({ refreshMeta: true })}
             disabled={refreshing}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass glass-border text-sm font-medium disabled:opacity-50"
@@ -206,6 +229,7 @@ const Templates = () => {
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Name</th>
+                  <th className="px-4 py-3 font-medium">Provider</th>
                   <th className="px-4 py-3 font-medium">Meta status</th>
                   <th className="px-4 py-3 font-medium">Category</th>
                   <th className="px-4 py-3 font-medium">Content SID</th>
@@ -218,15 +242,22 @@ const Templates = () => {
                 {pagedItems.map((t) => (
                   <tr key={t.id} className="border-b border-border/60">
                     <td className="px-4 py-3 font-medium">{t.name}</td>
+                    <td className="px-4 py-3 text-xs">
+                      {(t.provider || "twilio_content") === "meta" ? "Meta" : "Twilio"}
+                    </td>
                     <td className="px-4 py-3 whitespace-nowrap">{metaLabel(t)}</td>
                     <td className="px-4 py-3">{t.whatsapp_category || "—"}</td>
                     <td className="px-4 py-3 font-mono text-xs">
-                      {t.content_sid_masked || t.content_sid}
+                      {(t.provider || "") === "meta"
+                        ? "—"
+                        : t.content_sid_masked || t.content_sid || "—"}
                     </td>
                     <td className="px-4 py-3 capitalize">{t.status}</td>
-                    <td className="px-4 py-3">{t.language}</td>
+                    <td className="px-4 py-3">{t.meta_language_code || t.language}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1.5 justify-end">
+                        {(t.provider || "") !== "meta" && (
+                          <>
                         <button
                           onClick={() => refreshOne(t)}
                           disabled={busyId === t.id}
@@ -245,6 +276,8 @@ const Templates = () => {
                         <button onClick={() => openEdit(t)} className="p-1.5 rounded-lg hover:bg-muted" title="Edit">
                           <Pencil className="w-4 h-4" />
                         </button>
+                          </>
+                        )}
                         <button
                           onClick={() => handleDelete(t)}
                           className="p-1.5 rounded-lg hover:bg-muted text-destructive"

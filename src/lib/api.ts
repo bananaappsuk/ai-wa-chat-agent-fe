@@ -453,6 +453,15 @@ export const messages = {
 
 export type TemplateStatus = "draft" | "pending" | "approved" | "rejected";
 
+export type VariableSchemaSlot = {
+  key: string;
+  kind?: string;
+  index?: number;
+  param_type?: string;
+  required?: boolean;
+  sub_type?: string;
+};
+
 export type WaTemplate = {
   id: string;
   user_id: string;
@@ -474,15 +483,30 @@ export type WaTemplate = {
   provider?: string;
   friendly_name?: string;
   whatsapp_approval_checked_at?: string | null;
+  meta_template_name?: string | null;
+  meta_language_code?: string | null;
+  meta_graph_id?: string | null;
+  components?: Record<string, unknown>[];
+  variable_schema?: VariableSchemaSlot[];
+  send_supported?: boolean;
+  send_unsupported_reason?: string | null;
+  whatsapp_approval_status_raw?: string | null;
 };
 
 export const templates = {
-  list: (params?: { status?: string; whatsapp_status?: string; q?: string; refresh?: boolean }) => {
+  list: (params?: {
+    status?: string;
+    whatsapp_status?: string;
+    q?: string;
+    refresh?: boolean;
+    provider?: string;
+  }) => {
     const qs = new URLSearchParams();
     if (params?.status) qs.set("status", params.status);
     if (params?.whatsapp_status) qs.set("whatsapp_status", params.whatsapp_status);
     if (params?.q) qs.set("q", params.q);
     if (params?.refresh) qs.set("refresh", "true");
+    if (params?.provider) qs.set("provider", params.provider);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return api.get<WaTemplate[]>(`/templates${suffix}`);
   },
@@ -491,6 +515,7 @@ export const templates = {
   update: (id: string, b: Partial<WaTemplate>) => api.patch<WaTemplate>(`/templates/${id}`, b),
   remove: (id: string) => api.del<void>(`/templates/${id}`),
   refreshStatus: (id: string) => api.post<WaTemplate>(`/templates/${id}/refresh-status`, {}),
+  syncMeta: () => api.post<{ ok: boolean; synced: number; skipped?: number; fetched?: number }>("/templates/sync-meta", {}),
 };
 
 export type SocialLinks = {

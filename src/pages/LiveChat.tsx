@@ -196,7 +196,11 @@ const LiveChat = () => {
     fetchConversations();
     templatesApi
       .list()
-      .then((data) => setApprovedTemplates(data.filter((t) => t.status === "approved")))
+      .then((data) =>
+        setApprovedTemplates(
+          data.filter((t) => t.status === "approved" || t.provider === "meta"),
+        ),
+      )
       .catch(() => setApprovedTemplates([]));
     agentsApi
       .list()
@@ -208,6 +212,18 @@ const LiveChat = () => {
       })
       .catch(() => setActiveAgentName(null));
   }, [fetchConversations]);
+
+  useEffect(() => {
+    const meta = latestInboundProvider(messages) === "meta";
+    templatesApi
+      .list({ provider: meta ? "meta" : "twilio_content" })
+      .then((data) =>
+        setApprovedTemplates(
+          data.filter((t) => t.status === "approved" || t.provider === "meta"),
+        ),
+      )
+      .catch(() => undefined);
+  }, [activeLead?.id, messages]);
 
   useEffect(() => {
     if (!user) return;
@@ -261,18 +277,14 @@ const LiveChat = () => {
       toast.error("Cannot attach media to a template message");
       return;
     }
-    if (isMetaChat && (selectedTemplateId || attachment)) {
-      toast.error(
-        selectedTemplateId
-          ? "Templates are not yet supported for Meta WhatsApp conversations."
-          : "Media sending is not yet supported for Meta WhatsApp conversations.",
-      );
+    if (isMetaChat && attachment) {
+      toast.error("Media sending is not yet supported for Meta WhatsApp conversations.");
       return;
     }
     if (!windowOpen && !selectedTemplateId) {
       toast.error(
         isMetaChat
-          ? "The 24-hour customer service window is closed. Meta template sending is not yet available in this version."
+          ? "Use an approved Meta WhatsApp template to message outside the 24-hour window."
           : "WhatsApp customer service window closed. Use an approved template.",
       );
       return;
@@ -400,7 +412,16 @@ const LiveChat = () => {
   const windowOpen = isWindowOpen(activeLead);
   const chatProvider = latestInboundProvider(messages);
   const isMetaChat = chatProvider === "meta";
-  const selectedTemplate = approvedTemplates.find((t) => t.id === selectedTemplateId) || null;
+  const pickerTemplates = approvedTemplates.filter((t) =>
+    isMetaChat
+      ? t.provider === "meta" && !!t.whatsapp_sendable
+      : t.provider !== "meta" && t.status === "approved",
+  );
+  const selectedTemplate = pickerTemplates.find((t) => t.id === selectedTemplateId) || null;
+  const templateVarKeys =
+    selectedTemplate?.variable_schema?.length
+      ? selectedTemplate.variable_schema.map((s) => s.key)
+      : selectedTemplate?.variables || [];
 
   const refreshSummary = async () => {
     if (!activeLead) return;
@@ -661,8 +682,8 @@ const LiveChat = () => {
                   <p className="text-xs text-destructive">
                     {isMetaChat ? (
                       <>
-                        The 24-hour customer service window is closed. Meta template sending is not
-                        yet available in this version.
+                        The 24-hour customer service window is closed. Send an approved Meta WhatsApp
+                        template.
                       </>
                     ) : (
                       <>
@@ -679,16 +700,17 @@ const LiveChat = () => {
                     Window open until {new Date(activeLead.whatsapp_window_expires_at).toLocaleString()}
                   </p>
                 ) : null}
-                {!isMetaChat && (
                 <div className="flex flex-wrap gap-2">
                   <select
                     value={selectedTemplateId}
                     onChange={(e) => {
                       const id = e.target.value;
                       setSelectedTemplateId(id);
-                      const t = approvedTemplates.find((x) => x.id === id);
+                      const t = pickerTemplates.find((x) => x.id === id);
                       const next: Record<string, string> = {};
-                      (t?.variables || []).forEach((k) => {
+                      const keys =
+                        t?.variable_schema?.length ? t.variable_schema.map((s) => s.key) : t?.variables || [];
+                      keys.forEach((k) => {
                         next[k] = templateVars[k] || "";
                       });
                       setTemplateVars(next);
@@ -697,7 +719,7 @@ const LiveChat = () => {
                     className="bg-muted rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-accent/30"
                   >
                     <option value="">{windowOpen ? "Free-form message" : "Select approved template"}</option>
-                    {approvedTemplates.map((t) => (
+                    {pickerTemplates.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name}
                       </option>
@@ -718,10 +740,9 @@ const LiveChat = () => {
                     </select>
                   )}
                 </div>
-                )}
-                {!isMetaChat && selectedTemplate && (selectedTemplate.variables || []).length > 0 && (
+                {selectedTemplate && templateVarKeys.length > 0 && (
                   <div className="grid grid-cols-2 gap-2">
-                    {selectedTemplate.variables.map((key) => (
+                    {templateVarKeys.map((key) => (
                       <input
                         key={key}
                         value={templateVars[key] || ""}
@@ -791,7 +812,7 @@ const LiveChat = () => {
                         ? "Lead is unsubscribed"
                         : !windowOpen
                           ? isMetaChat
-                            ? "Window closed — Meta templates not available yet"
+                            ? "Free-form disabled — choose an approved Meta template"
                             : "Free-form disabled — choose a template"
                           : uploading
                             ? "Uploading..."
@@ -807,7 +828,9 @@ const LiveChat = () => {
                       uploading ||
                       !!activeLead.blacklisted ||
                       (isMetaChat
-                        ? !windowOpen || !newMessage.trim()
+                        ? selectedTemplateId
+                          ? false
+                          : !windowOpen || !newMessage.trim()
                         : selectedTemplateId
                           ? false
                           : !windowOpen || (!newMessage.trim() && !attachment))
