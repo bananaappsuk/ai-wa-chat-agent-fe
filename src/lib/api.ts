@@ -945,6 +945,40 @@ export const notificationsApi = {
   remove: (id: string) => api.del<{ ok: boolean }>(`/notifications/${id}`),
 };
 
+export type TwilioIntegrationStatus = {
+  status: "not_configured" | "misconfigured" | "configured" | "requires_action" | "connected";
+  enabled: boolean;
+  configured: boolean;
+  routing_number?: string | null;
+  routing_ready: boolean;
+  platform_sender_ready: boolean;
+  sender_type: string;
+  status_callback_configured: boolean;
+  warnings: string[];
+};
+
+export type MetaIntegrationStatus = {
+  status: "not_configured" | "misconfigured" | "configured" | "requires_action" | "connected";
+  enabled: boolean;
+  configured: boolean;
+  phone_number_id?: string | null;
+  waba_id?: string | null;
+  display_phone_number?: string | null;
+  routing_ready: boolean;
+  poc_aligned: boolean;
+  platform_token_present: boolean;
+  sending_ready: boolean;
+  webhook_ready: boolean | null;
+  last_template_sync_at?: string | null;
+  warnings: string[];
+};
+
+export type WhatsAppSettings = {
+  twilio: TwilioIntegrationStatus;
+  meta: MetaIntegrationStatus;
+  embedded_signup?: { available: boolean };
+};
+
 export const settingsApi = {
   whatsappStatus: () =>
     api.get<{
@@ -959,6 +993,15 @@ export const settingsApi = {
       production_ready: boolean;
       warnings: string[];
     }>("/settings/whatsapp-status"),
+  getWhatsApp: () => api.get<WhatsAppSettings>("/settings/whatsapp"),
+  updateWhatsApp: (b: {
+    twilio?: { routing_number?: string | null };
+    meta?: {
+      phone_number_id?: string | null;
+      waba_id?: string | null;
+      display_phone_number?: string | null;
+    };
+  }) => api.patch<WhatsAppSettings>("/settings/whatsapp", b),
   ai: () => api.get<AiSettings>("/settings/ai"),
   updateAi: (b: Partial<AiSettings>) => api.patch<AiSettings>("/settings/ai", b),
   testAi: (prompt: string, conversation_id?: string) =>

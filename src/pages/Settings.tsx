@@ -4,13 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { auth, profile as profileApi, settingsApi, AiSettings } from "@/lib/api";
-
-const isValidIntlPhone = (value: string): boolean => {
-  const trimmed = value.trim().replace(/[\s\-()]/g, "");
-  if (!trimmed) return true;
-  return /^\+[1-9]\d{7,14}$/.test(trimmed);
-};
+import { auth, profile as profileApi, settingsApi, AiSettings, WhatsAppSettings } from "@/lib/api";
 
 const passwordHints = (pw: string) => {
   const hints: string[] = [];
@@ -52,17 +46,12 @@ const Settings = () => {
     campaigns: true,
     security: true,
   });
-  const [waStatus, setWaStatus] = useState<{
-    environment: string;
-    sender_configured: boolean;
-    sender_type: string;
-    status_callback_configured: boolean;
-    signature_validation_enabled: boolean;
-    public_url_configured: boolean;
-    template_capability_configured: boolean;
-    production_ready: boolean;
-    warnings: string[];
-  } | null>(null);
+  const [waIntegrations, setWaIntegrations] = useState<WhatsAppSettings | null>(null);
+  const [twilioRouting, setTwilioRouting] = useState("");
+  const [metaPnid, setMetaPnid] = useState("");
+  const [metaWaba, setMetaWaba] = useState("");
+  const [metaDisplay, setMetaDisplay] = useState("");
+  const [waSaving, setWaSaving] = useState<"twilio" | "meta" | null>(null);
   const [ai, setAi] = useState<AiSettings | null>(null);
   const [aiSaving, setAiSaving] = useState(false);
   const [testPrompt, setTestPrompt] = useState("Hello, what can you help with?");
@@ -90,9 +79,15 @@ const Settings = () => {
     }
     setLoading(false);
     settingsApi
-      .whatsappStatus()
-      .then(setWaStatus)
-      .catch(() => setWaStatus(null));
+      .getWhatsApp()
+      .then((data) => {
+        setWaIntegrations(data);
+        setTwilioRouting(data.twilio.routing_number || "");
+        setMetaPnid(data.meta.phone_number_id || "");
+        setMetaWaba(data.meta.waba_id || "");
+        setMetaDisplay(data.meta.display_phone_number || "");
+      })
+      .catch(() => setWaIntegrations(null));
     settingsApi
       .ai()
       .then(setAi)
@@ -101,13 +96,6 @@ const Settings = () => {
 
   const handleSave = async () => {
     if (!user) return;
-    const wa = profile.twilio_whatsapp_to.trim();
-    if (wa && !isValidIntlPhone(wa)) {
-      toast.error("Business WhatsApp number must be international format", {
-        description: "Example: +447700900000",
-      });
-      return;
-    }
     const emailChanged = profile.email.trim().toLowerCase() !== (user.email || "").toLowerCase();
     if (emailChanged && !emailPassword) {
       toast.error("Enter your current password to change email");
@@ -122,7 +110,6 @@ const Settings = () => {
         display_name: profile.display_name.trim() || undefined,
         company_name: profile.company_name.trim(),
         phone: profile.phone.trim(),
-        twilio_whatsapp_to: wa || null,
         timezone: profile.timezone.trim() || "UTC",
         locale: profile.locale.trim() || "en",
         notification_preferences: notifications,
@@ -313,51 +300,190 @@ const Settings = () => {
               </div>
             </div>
 
-            <div className="bg-card rounded-2xl p-6">
-              <h2 className="font-display font-semibold mb-5">WhatsApp Configuration</h2>
-              <div className="mb-5">
-                <label className="text-sm text-muted-foreground mb-1.5 block">Business WhatsApp Number</label>
-                <input
-                  value={profile.twilio_whatsapp_to}
-                  onChange={(e) => setProfile({ ...profile, twilio_whatsapp_to: e.target.value })}
-                  placeholder="+14155238886"
-                  maxLength={32}
-                  className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
-                />
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  Your Twilio WhatsApp sender number (E.164). Inbound messages to this number route to your account.
-                </p>
-              </div>
-              {waStatus ? (
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Environment</span>
-                    <span className="font-medium capitalize">{waStatus.environment}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Sender</span>
-                    <span className="font-medium">
-                      {waStatus.sender_configured ? "Configured" : "Not configured"} · {waStatus.sender_type}
-                    </span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Status callback</span>
-                    <span className="font-medium">{waStatus.status_callback_configured ? "OK" : "Missing"}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Signature validation</span>
-                    <span className="font-medium">{waStatus.signature_validation_enabled ? "Enabled" : "Disabled"}</span>
-                  </div>
-                  {waStatus.warnings?.length > 0 && (
-                    <div className="mt-3 rounded-xl bg-muted p-3 space-y-1">
-                      {waStatus.warnings.map((w) => (
-                        <p key={w} className="text-xs text-destructive">{w}</p>
-                      ))}
+            <div className="space-y-4">
+              <h2 className="font-display font-semibold">WhatsApp Integrations</h2>
+              <p className="text-sm text-muted-foreground">
+                Connect Twilio and Meta independently. Message, campaign, and Live Chat sending still follow each conversation or campaign&apos;s stored provider.
+              </p>
+              {waIntegrations ? (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="bg-card rounded-2xl p-6">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <h3 className="font-display font-semibold">Twilio</h3>
+                      <span className="text-xs font-medium rounded-full px-2.5 py-1 bg-muted">
+                        {waIntegrations.twilio.status === "connected"
+                          ? "Configured"
+                          : waIntegrations.twilio.status === "not_configured"
+                            ? "Not configured"
+                            : waIntegrations.twilio.status === "requires_action"
+                              ? "Requires action"
+                              : "Misconfigured"}
+                      </span>
                     </div>
-                  )}
+                    <label className="text-sm text-muted-foreground mb-1.5 block">Routing number</label>
+                    <input
+                      value={twilioRouting}
+                      onChange={(e) => setTwilioRouting(e.target.value)}
+                      placeholder="+14155238886"
+                      maxLength={32}
+                      className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1.5 mb-4">
+                      Inbound Twilio WhatsApp messages to this number route to this account. This does not change the platform sender.
+                    </p>
+                    <div className="space-y-2 text-sm mb-4">
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Routing ready</span>
+                        <span className="font-medium">{waIntegrations.twilio.routing_ready ? "Yes" : "No"}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Platform sender ready</span>
+                        <span className="font-medium">
+                          {waIntegrations.twilio.platform_sender_ready ? "Yes" : "No"}
+                          {waIntegrations.twilio.sender_type ? ` · ${waIntegrations.twilio.sender_type}` : ""}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Status callback</span>
+                        <span className="font-medium">{waIntegrations.twilio.status_callback_configured ? "OK" : "Missing"}</span>
+                      </div>
+                    </div>
+                    {waIntegrations.twilio.warnings.length > 0 && (
+                      <div className="mb-4 rounded-xl bg-muted p-3 space-y-1">
+                        {waIntegrations.twilio.warnings.map((w) => (
+                          <p key={w} className="text-xs text-destructive">{w}</p>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      disabled={waSaving !== null}
+                      onClick={async () => {
+                        setWaSaving("twilio");
+                        try {
+                          const data = await settingsApi.updateWhatsApp({ twilio: { routing_number: twilioRouting } });
+                          setWaIntegrations(data);
+                          setTwilioRouting(data.twilio.routing_number || "");
+                          toast.success("Twilio routing saved");
+                        } catch (err) {
+                          toast.error("Could not save Twilio routing", { description: (err as Error).message });
+                        } finally {
+                          setWaSaving(null);
+                        }
+                      }}
+                      className="flex items-center gap-2 bg-accent text-accent-foreground px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50"
+                    >
+                      <Save className="w-4 h-4" />
+                      {waSaving === "twilio" ? "Saving..." : "Save"}
+                    </button>
+                  </div>
+
+                  <div className="bg-card rounded-2xl p-6">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <h3 className="font-display font-semibold">Meta</h3>
+                      <span className="text-xs font-medium rounded-full px-2.5 py-1 bg-muted">
+                        {waIntegrations.meta.status === "connected"
+                          ? "Configured / Connected for POC"
+                          : waIntegrations.meta.status === "not_configured"
+                            ? "Not configured"
+                            : waIntegrations.meta.status === "requires_action"
+                              ? "Requires action"
+                              : "Misconfigured"}
+                      </span>
+                    </div>
+                    <div className="grid gap-3 mb-4">
+                      <div>
+                        <label className="text-sm text-muted-foreground mb-1.5 block">Phone number ID</label>
+                        <input
+                          value={metaPnid}
+                          onChange={(e) => setMetaPnid(e.target.value)}
+                          maxLength={32}
+                          className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm text-muted-foreground mb-1.5 block">WABA ID</label>
+                        <input
+                          value={metaWaba}
+                          onChange={(e) => setMetaWaba(e.target.value)}
+                          maxLength={32}
+                          className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm text-muted-foreground mb-1.5 block">Display phone number</label>
+                        <input
+                          value={metaDisplay}
+                          onChange={(e) => setMetaDisplay(e.target.value)}
+                          placeholder="+15550001111"
+                          maxLength={32}
+                          className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-sm mb-4">
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Routing ready</span>
+                        <span className="font-medium">{waIntegrations.meta.routing_ready ? "Yes" : "No"}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Sending ready</span>
+                        <span className="font-medium">{waIntegrations.meta.sending_ready ? "Yes" : "No"}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">POC alignment</span>
+                        <span className="font-medium">{waIntegrations.meta.poc_aligned ? "Aligned" : "Not aligned"}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Webhook</span>
+                        <span className="font-medium">Unknown (not live-verified)</span>
+                      </div>
+                    </div>
+                    {waIntegrations.meta.warnings.length > 0 && (
+                      <div className="mb-4 rounded-xl bg-muted p-3 space-y-1">
+                        {waIntegrations.meta.warnings.map((w) => (
+                          <p key={w} className="text-xs text-destructive">{w}</p>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        disabled={waSaving !== null}
+                        onClick={async () => {
+                          setWaSaving("meta");
+                          try {
+                            const data = await settingsApi.updateWhatsApp({
+                              meta: {
+                                phone_number_id: metaPnid,
+                                waba_id: metaWaba,
+                                display_phone_number: metaDisplay,
+                              },
+                            });
+                            setWaIntegrations(data);
+                            setMetaPnid(data.meta.phone_number_id || "");
+                            setMetaWaba(data.meta.waba_id || "");
+                            setMetaDisplay(data.meta.display_phone_number || "");
+                            toast.success("Meta identifiers saved");
+                          } catch (err) {
+                            toast.error("Could not save Meta settings", { description: (err as Error).message });
+                          } finally {
+                            setWaSaving(null);
+                          }
+                        }}
+                        className="flex items-center gap-2 bg-accent text-accent-foreground px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50"
+                      >
+                        <Save className="w-4 h-4" />
+                        {waSaving === "meta" ? "Saving..." : "Save"}
+                      </button>
+                      <Link to="/templates" className="text-sm text-accent font-medium">
+                        Sync from Meta
+                      </Link>
+                    </div>
+                  </div>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Unable to load WhatsApp status.</p>
+                <p className="text-sm text-muted-foreground">Unable to load WhatsApp integrations.</p>
               )}
             </div>
 
