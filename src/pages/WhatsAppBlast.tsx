@@ -67,7 +67,9 @@ const WhatsAppBlast = () => {
       .list()
       .then((data) =>
         setApprovedTemplates(
-          data.filter((t) => t.status === "approved" && t.provider !== "meta" && !!t.content_sid),
+          data.filter((t) =>
+            t.provider === "meta" ? !!t.whatsapp_sendable : t.status === "approved" && !!t.content_sid,
+          ),
         ),
       )
       .catch(() => setApprovedTemplates([]));
@@ -203,9 +205,23 @@ const WhatsAppBlast = () => {
   };
 
   const validNumbers = parsedNumbers.filter(n => n.valid);
+  const selectedTpl = approvedTemplates.find((t) => t.id === selectedTemplateId) || null;
+  const isMetaTpl = selectedTpl?.provider === "meta";
+  const blastVarKeys =
+    selectedTpl?.variable_schema?.length
+      ? selectedTpl.variable_schema.map((s) => s.key)
+      : selectedTpl?.variables || [];
 
   const handleSendBlast = async () => {
     if (!user || !campaignName.trim() || validNumbers.length === 0) return;
+    if (isMetaTpl && attachment) {
+      toast.error("Media sending is not supported for Meta WhatsApp blasts");
+      return;
+    }
+    if (isMetaTpl && !selectedTemplateId) {
+      toast.error("Meta blasts require an approved Meta WhatsApp template");
+      return;
+    }
     if (selectedTemplateId && attachment) {
       toast.error("Cannot attach media to a template blast");
       return;
@@ -394,23 +410,27 @@ const WhatsAppBlast = () => {
                     if (id) setAttachment(null);
                     const t = approvedTemplates.find((x) => x.id === id);
                     const next: Record<string, string> = {};
-                    (t?.variables || []).forEach((k) => {
+                    const keys =
+                      t?.variable_schema?.length ? t.variable_schema.map((s) => s.key) : t?.variables || [];
+                    keys.forEach((k) => {
                       next[k] = templateVars[k] || "";
                     });
                     setTemplateVars(next);
                   }}
                   className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
                 >
-                  <option value="">Free-form</option>
+                  <option value="">{isMetaTpl ? "Select Meta template" : "Free-form"}</option>
                   {approvedTemplates.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name} ({t.content_sid})
+                      {t.provider === "meta"
+                        ? `[Meta] ${t.name}${t.meta_language_code ? ` · ${t.meta_language_code}` : ""}`
+                        : `[Twilio] ${t.name} (${t.content_sid})`}
                     </option>
                   ))}
                 </select>
               </div>
               {selectedTemplateId &&
-                (approvedTemplates.find((t) => t.id === selectedTemplateId)?.variables || []).map((key) => (
+                blastVarKeys.map((key) => (
                   <div key={key}>
                     <label className="text-sm text-muted-foreground mb-1.5 block">Variable {`{{${key}}}`}</label>
                     <input
@@ -438,7 +458,7 @@ const WhatsAppBlast = () => {
                   <span className="text-foreground"> Marketing</span> only works for opted-in WhatsApp contacts.
                 </p>
               </div>
-              {!selectedTemplateId && (
+              {!selectedTemplateId && !isMetaTpl && (
                 <div>
                   <label className="text-sm text-muted-foreground mb-1.5 block">Optional media (free-form only)</label>
                   <input
@@ -509,7 +529,12 @@ const WhatsAppBlast = () => {
 
               <button
                 onClick={() => setStep("review")}
-                disabled={!campaignName.trim() || (!selectedTemplateId && !message.trim() && !attachment)}
+                disabled={
+                  !campaignName.trim() ||
+                  (isMetaTpl
+                    ? !selectedTemplateId
+                    : !selectedTemplateId && !message.trim() && !attachment)
+                }
                 className="w-full py-3 rounded-xl gradient-green text-sm font-medium text-primary-foreground disabled:opacity-50"
               >
                 Review & Send →
@@ -638,7 +663,10 @@ const WhatsAppBlast = () => {
                 <div key={b.id} className="p-5 flex flex-col lg:flex-row lg:items-center gap-4">
                   <div className="lg:w-1/4">
                     <p className="font-semibold text-sm">{b.name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{new Date(b.created_at).toLocaleDateString()}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {new Date(b.created_at).toLocaleDateString()}
+                      {b.provider === "meta" ? " · Meta" : b.provider === "twilio" ? " · Twilio" : ""}
+                    </p>
                   </div>
                   <div className="lg:w-1/4">
                     <p className="text-xs text-muted-foreground truncate">{b.message}</p>

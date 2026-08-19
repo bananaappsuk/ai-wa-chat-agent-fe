@@ -606,6 +606,9 @@ export type Campaign = {
   media_url?: string | null;
   media_content_type?: string | null;
   template_id?: string | null;
+  provider?: string | null;
+  meta_template_name?: string | null;
+  meta_language_code?: string | null;
   content_sid?: string | null;
   content_variables?: Record<string, string> | null;
   status: string;
@@ -687,6 +690,8 @@ export type CampaignRecipient = {
   error_message?: string | null;
   error_code?: string | null;
   twilio_sid?: string | null;
+  provider?: string | null;
+  provider_message_id?: string | null;
   replied_at?: string | null;
   content_source?: string | null;
   generated_message?: string | null;
@@ -784,6 +789,7 @@ export type Blast = {
   name: string;
   message: string;
   template_id?: string | null;
+  provider?: string | null;
   content_sid?: string | null;
   content_variables?: Record<string, string> | null;
   message_purpose?: string | null;
