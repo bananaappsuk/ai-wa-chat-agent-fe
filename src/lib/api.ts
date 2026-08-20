@@ -966,7 +966,6 @@ export type MetaIntegrationStatus = {
   waba_id?: string | null;
   display_phone_number?: string | null;
   routing_ready: boolean;
-  poc_aligned?: boolean;
   platform_token_present?: boolean;
   sending_ready: boolean;
   token_valid?: boolean;
