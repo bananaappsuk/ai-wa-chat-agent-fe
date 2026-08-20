@@ -961,15 +961,19 @@ export type MetaIntegrationStatus = {
   status: "not_configured" | "misconfigured" | "configured" | "requires_action" | "connected";
   enabled: boolean;
   configured: boolean;
+  connection_status?: string | null;
   phone_number_id?: string | null;
   waba_id?: string | null;
   display_phone_number?: string | null;
   routing_ready: boolean;
-  poc_aligned: boolean;
-  platform_token_present: boolean;
+  poc_aligned?: boolean;
+  platform_token_present?: boolean;
   sending_ready: boolean;
+  token_valid?: boolean;
+  token_expires_at?: string | null;
   webhook_ready: boolean | null;
   last_template_sync_at?: string | null;
+  onboarding_source?: string | null;
   warnings: string[];
 };
 
@@ -977,6 +981,7 @@ export type WhatsAppSettings = {
   twilio: TwilioIntegrationStatus;
   meta: MetaIntegrationStatus;
   embedded_signup?: { available: boolean };
+  onboarding?: { ok: boolean; status: string; warnings: string[] };
 };
 
 export const settingsApi = {
@@ -1002,6 +1007,20 @@ export const settingsApi = {
       display_phone_number?: string | null;
     };
   }) => api.patch<WhatsAppSettings>("/settings/whatsapp", b),
+  startMetaOnboarding: () =>
+    api.post<{ state: string; app_id: string; config_id: string; graph_version: string }>(
+      "/settings/whatsapp/meta/onboarding/start",
+      {}
+    ),
+  completeMetaOnboarding: (b: {
+    state: string;
+    code: string;
+    waba_id: string;
+    phone_number_id: string;
+    display_phone_number?: string;
+    business_id?: string;
+  }) => api.post<WhatsAppSettings>("/settings/whatsapp/meta/onboarding/complete", b),
+  disconnectMeta: () => api.post<WhatsAppSettings>("/settings/whatsapp/meta/disconnect", {}),
   ai: () => api.get<AiSettings>("/settings/ai"),
   updateAi: (b: Partial<AiSettings>) => api.patch<AiSettings>("/settings/ai", b),
   testAi: (prompt: string, conversation_id?: string) =>

@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { auth, profile as profileApi, settingsApi, AiSettings, WhatsAppSettings } from "@/lib/api";
+import { auth, profile as profileApi, settingsApi, templates as templatesApi, AiSettings, WhatsAppSettings } from "@/lib/api";
+import { launchEmbeddedSignup } from "@/lib/metaEmbeddedSignup";
 
 const passwordHints = (pw: string) => {
   const hints: string[] = [];
@@ -48,10 +49,9 @@ const Settings = () => {
   });
   const [waIntegrations, setWaIntegrations] = useState<WhatsAppSettings | null>(null);
   const [twilioRouting, setTwilioRouting] = useState("");
-  const [metaPnid, setMetaPnid] = useState("");
-  const [metaWaba, setMetaWaba] = useState("");
-  const [metaDisplay, setMetaDisplay] = useState("");
   const [waSaving, setWaSaving] = useState<"twilio" | "meta" | null>(null);
+  const [metaBusy, setMetaBusy] = useState<"connect" | "disconnect" | "sync" | null>(null);
+  const [disconnectOpen, setDisconnectOpen] = useState(false);
   const [ai, setAi] = useState<AiSettings | null>(null);
   const [aiSaving, setAiSaving] = useState(false);
   const [testPrompt, setTestPrompt] = useState("Hello, what can you help with?");
@@ -83,9 +83,6 @@ const Settings = () => {
       .then((data) => {
         setWaIntegrations(data);
         setTwilioRouting(data.twilio.routing_number || "");
-        setMetaPnid(data.meta.phone_number_id || "");
-        setMetaWaba(data.meta.waba_id || "");
-        setMetaDisplay(data.meta.display_phone_number || "");
       })
       .catch(() => setWaIntegrations(null));
     settingsApi
@@ -169,6 +166,40 @@ const Settings = () => {
   const initials = profile.full_name
     ? profile.full_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
     : "??";
+
+  const handleMetaConnect = async () => {
+    setMetaBusy("connect");
+    try {
+      const start = await settingsApi.startMetaOnboarding();
+      const result = await launchEmbeddedSignup({
+        appId: start.app_id,
+        configId: start.config_id,
+        graphVersion: start.graph_version,
+      });
+      const data = await settingsApi.completeMetaOnboarding({
+        state: start.state,
+        code: result.code,
+        waba_id: result.session.waba_id,
+        phone_number_id: result.session.phone_number_id,
+        display_phone_number: result.session.display_phone_number,
+        business_id: result.session.business_id,
+      });
+      setWaIntegrations(data);
+      if (data.onboarding && data.onboarding.ok === false) {
+        toast.warning("Meta WhatsApp needs attention", {
+          description: (data.onboarding.warnings || []).join(" ") || data.onboarding.status,
+        });
+      } else {
+        toast.success("Meta WhatsApp connected");
+      }
+    } catch (err) {
+      toast.error("Could not connect Meta WhatsApp", {
+        description: (err as Error).message,
+      });
+    } finally {
+      setMetaBusy(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -382,63 +413,44 @@ const Settings = () => {
                     <div className="flex items-start justify-between gap-3 mb-4">
                       <h3 className="font-display font-semibold">Meta</h3>
                       <span className="text-xs font-medium rounded-full px-2.5 py-1 bg-muted">
-                        {waIntegrations.meta.status === "connected"
-                          ? "Configured / Connected for POC"
-                          : waIntegrations.meta.status === "not_configured"
-                            ? "Not configured"
-                            : waIntegrations.meta.status === "requires_action"
-                              ? "Requires action"
-                              : "Misconfigured"}
+                        {waIntegrations.meta.connection_status === "legacy_poc"
+                          ? "Legacy POC"
+                          : waIntegrations.meta.connection_status === "connected"
+                            ? "Connected"
+                            : waIntegrations.meta.connection_status === "error"
+                              ? "Needs attention"
+                              : waIntegrations.meta.connection_status === "disconnected"
+                                ? "Disconnected"
+                                : waIntegrations.meta.status === "not_configured"
+                                  ? "Not configured"
+                                  : waIntegrations.meta.status === "requires_action"
+                                    ? "Requires action"
+                                    : "Misconfigured"}
                       </span>
-                    </div>
-                    <div className="grid gap-3 mb-4">
-                      <div>
-                        <label className="text-sm text-muted-foreground mb-1.5 block">Phone number ID</label>
-                        <input
-                          value={metaPnid}
-                          onChange={(e) => setMetaPnid(e.target.value)}
-                          maxLength={32}
-                          className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm text-muted-foreground mb-1.5 block">WABA ID</label>
-                        <input
-                          value={metaWaba}
-                          onChange={(e) => setMetaWaba(e.target.value)}
-                          maxLength={32}
-                          className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm text-muted-foreground mb-1.5 block">Display phone number</label>
-                        <input
-                          value={metaDisplay}
-                          onChange={(e) => setMetaDisplay(e.target.value)}
-                          placeholder="+15550001111"
-                          maxLength={32}
-                          className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
-                        />
-                      </div>
                     </div>
                     <div className="space-y-2 text-sm mb-4">
                       <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Routing ready</span>
-                        <span className="font-medium">{waIntegrations.meta.routing_ready ? "Yes" : "No"}</span>
+                        <span className="text-muted-foreground">Display number</span>
+                        <span className="font-medium">{waIntegrations.meta.display_phone_number || "—"}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Phone number ID</span>
+                        <span className="font-medium break-all">{waIntegrations.meta.phone_number_id || "—"}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">WABA</span>
+                        <span className="font-medium break-all">{waIntegrations.meta.waba_id || "—"}</span>
                       </div>
                       <div className="flex justify-between gap-4">
                         <span className="text-muted-foreground">Sending ready</span>
                         <span className="font-medium">{waIntegrations.meta.sending_ready ? "Yes" : "No"}</span>
                       </div>
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">POC alignment</span>
-                        <span className="font-medium">{waIntegrations.meta.poc_aligned ? "Aligned" : "Not aligned"}</span>
-                      </div>
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Webhook</span>
-                        <span className="font-medium">Unknown (not live-verified)</span>
-                      </div>
                     </div>
+                    {waIntegrations.meta.connection_status === "legacy_poc" && (
+                      <p className="text-xs text-muted-foreground mb-4">
+                        This account is using the legacy proof-of-concept connection. Reconnect with Embedded Signup to use tenant credentials.
+                      </p>
+                    )}
                     {waIntegrations.meta.warnings.length > 0 && (
                       <div className="mb-4 rounded-xl bg-muted p-3 space-y-1">
                         {waIntegrations.meta.warnings.map((w) => (
@@ -446,39 +458,102 @@ const Settings = () => {
                         ))}
                       </div>
                     )}
+                    {disconnectOpen && (
+                      <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 space-y-3">
+                        <p className="text-sm">Disconnect Meta WhatsApp from this account?</p>
+                        <p className="text-xs text-muted-foreground">
+                          Future Meta sending and inbound routing will stop. Message history stays. Twilio is unaffected. This does not delete your WhatsApp Business account at Meta.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={metaBusy !== null}
+                            onClick={async () => {
+                              setMetaBusy("disconnect");
+                              try {
+                                const data = await settingsApi.disconnectMeta();
+                                setWaIntegrations(data);
+                                setDisconnectOpen(false);
+                                toast.success("Meta WhatsApp disconnected");
+                              } catch (err) {
+                                toast.error("Could not disconnect Meta", { description: (err as Error).message });
+                              } finally {
+                                setMetaBusy(null);
+                              }
+                            }}
+                            className="px-4 py-2 rounded-xl bg-destructive text-destructive-foreground text-sm font-medium disabled:opacity-50"
+                          >
+                            {metaBusy === "disconnect" ? "Disconnecting..." : "Confirm disconnect"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDisconnectOpen(false)}
+                            className="px-4 py-2 rounded-xl border text-sm"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex flex-wrap items-center gap-3">
-                      <button
-                        type="button"
-                        disabled={waSaving !== null}
-                        onClick={async () => {
-                          setWaSaving("meta");
-                          try {
-                            const data = await settingsApi.updateWhatsApp({
-                              meta: {
-                                phone_number_id: metaPnid,
-                                waba_id: metaWaba,
-                                display_phone_number: metaDisplay,
-                              },
-                            });
-                            setWaIntegrations(data);
-                            setMetaPnid(data.meta.phone_number_id || "");
-                            setMetaWaba(data.meta.waba_id || "");
-                            setMetaDisplay(data.meta.display_phone_number || "");
-                            toast.success("Meta identifiers saved");
-                          } catch (err) {
-                            toast.error("Could not save Meta settings", { description: (err as Error).message });
-                          } finally {
-                            setWaSaving(null);
-                          }
-                        }}
-                        className="flex items-center gap-2 bg-accent text-accent-foreground px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50"
-                      >
-                        <Save className="w-4 h-4" />
-                        {waSaving === "meta" ? "Saving..." : "Save"}
-                      </button>
-                      <Link to="/templates" className="text-sm text-accent font-medium">
-                        Sync from Meta
-                      </Link>
+                      {waIntegrations.embedded_signup?.available && (
+                        <button
+                          type="button"
+                          disabled={metaBusy !== null}
+                          onClick={handleMetaConnect}
+                          className="flex items-center gap-2 bg-accent text-accent-foreground px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50"
+                        >
+                          {metaBusy === "connect"
+                            ? "Connecting..."
+                            : waIntegrations.meta.connection_status === "connected" ||
+                                waIntegrations.meta.connection_status === "legacy_poc" ||
+                                waIntegrations.meta.connection_status === "error"
+                              ? "Reconnect"
+                              : "Connect WhatsApp"}
+                        </button>
+                      )}
+                      {(waIntegrations.meta.connection_status === "connected" ||
+                        waIntegrations.meta.connection_status === "legacy_poc" ||
+                        waIntegrations.meta.connection_status === "error") && (
+                        <>
+                          {(waIntegrations.meta.connection_status === "connected" ||
+                            waIntegrations.meta.connection_status === "legacy_poc") && (
+                            <button
+                              type="button"
+                              disabled={metaBusy !== null}
+                              onClick={async () => {
+                                setMetaBusy("sync");
+                                try {
+                                  const result = await templatesApi.syncMeta();
+                                  toast.success(`Synced ${result.synced} Meta templates`);
+                                  const data = await settingsApi.getWhatsApp();
+                                  setWaIntegrations(data);
+                                } catch (err) {
+                                  toast.error("Template sync failed", { description: (err as Error).message });
+                                } finally {
+                                  setMetaBusy(null);
+                                }
+                              }}
+                              className="px-4 py-2 rounded-xl border text-sm font-medium disabled:opacity-50"
+                            >
+                              {metaBusy === "sync" ? "Syncing..." : "Sync Templates"}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={metaBusy !== null}
+                            onClick={() => setDisconnectOpen(true)}
+                            className="px-4 py-2 rounded-xl border text-sm font-medium disabled:opacity-50"
+                          >
+                            Disconnect
+                          </button>
+                        </>
+                      )}
+                      {!waIntegrations.embedded_signup?.available && (
+                        <p className="text-xs text-muted-foreground">
+                          Embedded Signup is not available on this environment.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
