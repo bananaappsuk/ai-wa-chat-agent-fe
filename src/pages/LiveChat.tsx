@@ -18,6 +18,14 @@ const isWindowOpen = (lead: Lead | null) => {
   return Date.now() < expires;
 };
 
+const latestInboundProvider = (msgs: Message[]): "twilio" | "meta" => {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].direction !== "inbound") continue;
+    return msgs[i].provider === "meta" ? "meta" : "twilio";
+  }
+  return "twilio";
+};
+
 /** Resolve stored template placeholders like [template:HX…] to a readable label. */
 const formatChatMessageText = (
   message: Message,
@@ -188,7 +196,11 @@ const LiveChat = () => {
     fetchConversations();
     templatesApi
       .list()
-      .then((data) => setApprovedTemplates(data.filter((t) => t.status === "approved")))
+      .then((data) =>
+        setApprovedTemplates(
+          data.filter((t) => t.status === "approved" || t.provider === "meta"),
+        ),
+      )
       .catch(() => setApprovedTemplates([]));
     agentsApi
       .list()
@@ -200,6 +212,18 @@ const LiveChat = () => {
       })
       .catch(() => setActiveAgentName(null));
   }, [fetchConversations]);
+
+  useEffect(() => {
+    const meta = latestInboundProvider(messages) === "meta";
+    templatesApi
+      .list({ provider: meta ? "meta" : "twilio_content" })
+      .then((data) =>
+        setApprovedTemplates(
+          data.filter((t) => t.status === "approved" || t.provider === "meta"),
+        ),
+      )
+      .catch(() => undefined);
+  }, [activeLead?.id, messages]);
 
   useEffect(() => {
     if (!user) return;
@@ -247,12 +271,22 @@ const LiveChat = () => {
   const handleSendMessage = async () => {
     if (!activeLead || !user || activeLead.blacklisted) return;
     const windowOpen = isWindowOpen(activeLead);
+    const chatProvider = latestInboundProvider(messages);
+    const isMetaChat = chatProvider === "meta";
     if (selectedTemplateId && attachment) {
       toast.error("Cannot attach media to a template message");
       return;
     }
+    if (isMetaChat && attachment) {
+      toast.error("Media sending is not yet supported for Meta WhatsApp conversations.");
+      return;
+    }
     if (!windowOpen && !selectedTemplateId) {
-      toast.error("WhatsApp customer service window closed. Use an approved template.");
+      toast.error(
+        isMetaChat
+          ? "Use an approved Meta WhatsApp template to message outside the 24-hour window."
+          : "WhatsApp customer service window closed. Use an approved template.",
+      );
       return;
     }
     if (windowOpen && !newMessage.trim() && !selectedTemplateId && !attachment) return;
@@ -376,7 +410,18 @@ const LiveChat = () => {
   const humanTakeover = !!activeLead?.takeover_by;
   const needsHuman = !!activeLead?.needs_human;
   const windowOpen = isWindowOpen(activeLead);
-  const selectedTemplate = approvedTemplates.find((t) => t.id === selectedTemplateId) || null;
+  const chatProvider = latestInboundProvider(messages);
+  const isMetaChat = chatProvider === "meta";
+  const pickerTemplates = approvedTemplates.filter((t) =>
+    isMetaChat
+      ? t.provider === "meta" && !!t.whatsapp_sendable
+      : t.provider !== "meta" && t.status === "approved",
+  );
+  const selectedTemplate = pickerTemplates.find((t) => t.id === selectedTemplateId) || null;
+  const templateVarKeys =
+    selectedTemplate?.variable_schema?.length
+      ? selectedTemplate.variable_schema.map((s) => s.key)
+      : selectedTemplate?.variables || [];
 
   const refreshSummary = async () => {
     if (!activeLead) return;
@@ -635,11 +680,20 @@ const LiveChat = () => {
               <div className="shrink-0 px-4 py-3 border-t border-border space-y-2 bg-background">
                 {!windowOpen ? (
                   <p className="text-xs text-destructive">
-                    Window closed
-                    {activeLead.whatsapp_window_expires_at
-                      ? ` · expired ${new Date(activeLead.whatsapp_window_expires_at).toLocaleString()}`
-                      : " · no recent inbound"}
-                    . Send an approved template.
+                    {isMetaChat ? (
+                      <>
+                        The 24-hour customer service window is closed. Send an approved Meta WhatsApp
+                        template.
+                      </>
+                    ) : (
+                      <>
+                        Window closed
+                        {activeLead.whatsapp_window_expires_at
+                          ? ` · expired ${new Date(activeLead.whatsapp_window_expires_at).toLocaleString()}`
+                          : " · no recent inbound"}
+                        . Send an approved template.
+                      </>
+                    )}
                   </p>
                 ) : activeLead.whatsapp_window_expires_at ? (
                   <p className="text-[11px] text-muted-foreground">
@@ -652,9 +706,11 @@ const LiveChat = () => {
                     onChange={(e) => {
                       const id = e.target.value;
                       setSelectedTemplateId(id);
-                      const t = approvedTemplates.find((x) => x.id === id);
+                      const t = pickerTemplates.find((x) => x.id === id);
                       const next: Record<string, string> = {};
-                      (t?.variables || []).forEach((k) => {
+                      const keys =
+                        t?.variable_schema?.length ? t.variable_schema.map((s) => s.key) : t?.variables || [];
+                      keys.forEach((k) => {
                         next[k] = templateVars[k] || "";
                       });
                       setTemplateVars(next);
@@ -663,7 +719,7 @@ const LiveChat = () => {
                     className="bg-muted rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-accent/30"
                   >
                     <option value="">{windowOpen ? "Free-form message" : "Select approved template"}</option>
-                    {approvedTemplates.map((t) => (
+                    {pickerTemplates.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name}
                       </option>
@@ -684,9 +740,9 @@ const LiveChat = () => {
                     </select>
                   )}
                 </div>
-                {selectedTemplate && (selectedTemplate.variables || []).length > 0 && (
+                {selectedTemplate && templateVarKeys.length > 0 && (
                   <div className="grid grid-cols-2 gap-2">
-                    {selectedTemplate.variables.map((key) => (
+                    {templateVarKeys.map((key) => (
                       <input
                         key={key}
                         value={templateVars[key] || ""}
@@ -727,9 +783,23 @@ const LiveChat = () => {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={!!activeLead.blacklisted || !windowOpen || !!selectedTemplateId || uploading}
-                    className="p-2.5 rounded-xl glass glass-border disabled:opacity-40"
-                    title={!windowOpen ? "Window closed" : selectedTemplateId ? "Clear template to attach media" : "Attach file"}
+                    disabled={
+                      isMetaChat ||
+                      !!activeLead.blacklisted ||
+                      !windowOpen ||
+                      !!selectedTemplateId ||
+                      uploading
+                    }
+                    className={`p-2.5 rounded-xl glass glass-border disabled:opacity-40 ${isMetaChat ? "hidden" : ""}`}
+                    title={
+                      isMetaChat
+                        ? "Media is not yet supported for Meta conversations"
+                        : !windowOpen
+                          ? "Window closed"
+                          : selectedTemplateId
+                            ? "Clear template to attach media"
+                            : "Attach file"
+                    }
                   >
                     <Paperclip className="w-4 h-4" />
                   </button>
@@ -741,7 +811,9 @@ const LiveChat = () => {
                       activeLead.blacklisted
                         ? "Lead is unsubscribed"
                         : !windowOpen
-                          ? "Free-form disabled — choose a template"
+                          ? isMetaChat
+                            ? "Free-form disabled — choose an approved Meta template"
+                            : "Free-form disabled — choose a template"
                           : uploading
                             ? "Uploading..."
                             : "Type a message..."
@@ -755,7 +827,13 @@ const LiveChat = () => {
                       sending ||
                       uploading ||
                       !!activeLead.blacklisted ||
-                      (selectedTemplateId ? false : !windowOpen || (!newMessage.trim() && !attachment))
+                      (isMetaChat
+                        ? selectedTemplateId
+                          ? false
+                          : !windowOpen || !newMessage.trim()
+                        : selectedTemplateId
+                          ? false
+                          : !windowOpen || (!newMessage.trim() && !attachment))
                     }
                     className="p-2.5 rounded-xl gradient-green disabled:opacity-50"
                   >

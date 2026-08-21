@@ -349,6 +349,8 @@ export type Message = {
   agent_id?: string | null;
   agent_name?: string | null;
   message_purpose?: string | null;
+  provider?: "twilio" | "meta";
+  provider_message_id?: string | null;
   twilio_sid?: string | null;
   error?: string | null;
   error_code?: string | null;
@@ -451,6 +453,15 @@ export const messages = {
 
 export type TemplateStatus = "draft" | "pending" | "approved" | "rejected";
 
+export type VariableSchemaSlot = {
+  key: string;
+  kind?: string;
+  index?: number;
+  param_type?: string;
+  required?: boolean;
+  sub_type?: string;
+};
+
 export type WaTemplate = {
   id: string;
   user_id: string;
@@ -472,15 +483,30 @@ export type WaTemplate = {
   provider?: string;
   friendly_name?: string;
   whatsapp_approval_checked_at?: string | null;
+  meta_template_name?: string | null;
+  meta_language_code?: string | null;
+  meta_graph_id?: string | null;
+  components?: Record<string, unknown>[];
+  variable_schema?: VariableSchemaSlot[];
+  send_supported?: boolean;
+  send_unsupported_reason?: string | null;
+  whatsapp_approval_status_raw?: string | null;
 };
 
 export const templates = {
-  list: (params?: { status?: string; whatsapp_status?: string; q?: string; refresh?: boolean }) => {
+  list: (params?: {
+    status?: string;
+    whatsapp_status?: string;
+    q?: string;
+    refresh?: boolean;
+    provider?: string;
+  }) => {
     const qs = new URLSearchParams();
     if (params?.status) qs.set("status", params.status);
     if (params?.whatsapp_status) qs.set("whatsapp_status", params.whatsapp_status);
     if (params?.q) qs.set("q", params.q);
     if (params?.refresh) qs.set("refresh", "true");
+    if (params?.provider) qs.set("provider", params.provider);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return api.get<WaTemplate[]>(`/templates${suffix}`);
   },
@@ -489,6 +515,7 @@ export const templates = {
   update: (id: string, b: Partial<WaTemplate>) => api.patch<WaTemplate>(`/templates/${id}`, b),
   remove: (id: string) => api.del<void>(`/templates/${id}`),
   refreshStatus: (id: string) => api.post<WaTemplate>(`/templates/${id}/refresh-status`, {}),
+  syncMeta: () => api.post<{ ok: boolean; synced: number; skipped?: number; fetched?: number }>("/templates/sync-meta", {}),
 };
 
 export type SocialLinks = {
@@ -579,6 +606,9 @@ export type Campaign = {
   media_url?: string | null;
   media_content_type?: string | null;
   template_id?: string | null;
+  provider?: string | null;
+  meta_template_name?: string | null;
+  meta_language_code?: string | null;
   content_sid?: string | null;
   content_variables?: Record<string, string> | null;
   status: string;
@@ -660,6 +690,8 @@ export type CampaignRecipient = {
   error_message?: string | null;
   error_code?: string | null;
   twilio_sid?: string | null;
+  provider?: string | null;
+  provider_message_id?: string | null;
   replied_at?: string | null;
   content_source?: string | null;
   generated_message?: string | null;
@@ -757,6 +789,7 @@ export type Blast = {
   name: string;
   message: string;
   template_id?: string | null;
+  provider?: string | null;
   content_sid?: string | null;
   content_variables?: Record<string, string> | null;
   message_purpose?: string | null;
@@ -912,6 +945,44 @@ export const notificationsApi = {
   remove: (id: string) => api.del<{ ok: boolean }>(`/notifications/${id}`),
 };
 
+export type TwilioIntegrationStatus = {
+  status: "not_configured" | "misconfigured" | "configured" | "requires_action" | "connected";
+  enabled: boolean;
+  configured: boolean;
+  routing_number?: string | null;
+  routing_ready: boolean;
+  platform_sender_ready: boolean;
+  sender_type: string;
+  status_callback_configured: boolean;
+  warnings: string[];
+};
+
+export type MetaIntegrationStatus = {
+  status: "not_configured" | "misconfigured" | "configured" | "requires_action" | "connected";
+  enabled: boolean;
+  configured: boolean;
+  connection_status?: string | null;
+  phone_number_id?: string | null;
+  waba_id?: string | null;
+  display_phone_number?: string | null;
+  routing_ready: boolean;
+  platform_token_present?: boolean;
+  sending_ready: boolean;
+  token_valid?: boolean;
+  token_expires_at?: string | null;
+  webhook_ready: boolean | null;
+  last_template_sync_at?: string | null;
+  onboarding_source?: string | null;
+  warnings: string[];
+};
+
+export type WhatsAppSettings = {
+  twilio: TwilioIntegrationStatus;
+  meta: MetaIntegrationStatus;
+  embedded_signup?: { available: boolean };
+  onboarding?: { ok: boolean; status: string; warnings: string[] };
+};
+
 export const settingsApi = {
   whatsappStatus: () =>
     api.get<{
@@ -926,6 +997,29 @@ export const settingsApi = {
       production_ready: boolean;
       warnings: string[];
     }>("/settings/whatsapp-status"),
+  getWhatsApp: () => api.get<WhatsAppSettings>("/settings/whatsapp"),
+  updateWhatsApp: (b: {
+    twilio?: { routing_number?: string | null };
+    meta?: {
+      phone_number_id?: string | null;
+      waba_id?: string | null;
+      display_phone_number?: string | null;
+    };
+  }) => api.patch<WhatsAppSettings>("/settings/whatsapp", b),
+  startMetaOnboarding: () =>
+    api.post<{ state: string; app_id: string; config_id: string; graph_version: string }>(
+      "/settings/whatsapp/meta/onboarding/start",
+      {}
+    ),
+  completeMetaOnboarding: (b: {
+    state: string;
+    code: string;
+    waba_id: string;
+    phone_number_id: string;
+    display_phone_number?: string;
+    business_id?: string;
+  }) => api.post<WhatsAppSettings>("/settings/whatsapp/meta/onboarding/complete", b),
+  disconnectMeta: () => api.post<WhatsAppSettings>("/settings/whatsapp/meta/disconnect", {}),
   ai: () => api.get<AiSettings>("/settings/ai"),
   updateAi: (b: Partial<AiSettings>) => api.patch<AiSettings>("/settings/ai", b),
   testAi: (prompt: string, conversation_id?: string) =>

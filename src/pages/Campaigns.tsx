@@ -98,7 +98,14 @@ const Campaigns = () => {
       .catch(() => setLeads([]));
     templatesApi
       .list()
-      .then((t) => setTemplates(t.filter((x) => x.status === "approved")))
+      .then((t) =>
+        setTemplates(
+          t.filter((x) => {
+            if (x.provider === "meta") return !!x.whatsapp_sendable;
+            return x.status === "approved" && !!x.content_sid;
+          }),
+        ),
+      )
       .catch(() => setTemplates([]));
     agentsApi
       .options()
@@ -256,12 +263,20 @@ const Campaigns = () => {
         toast.error("Tell the agent what this campaign is about (campaign goal)");
         return;
       }
+      const fb = templates.find((t) => t.id === form.fallback_template_id);
+      if (fb?.provider === "meta") {
+        toast.error("AI Agent campaigns cannot use Meta WhatsApp templates");
+        return;
+      }
       const needsFallback =
         form.delivery_scope === "all_eligible_recipients" || form.delivery_scope === "template_only";
       if (needsFallback && !form.fallback_template_id) {
         toast.error("Select an approved fallback template for closed WhatsApp windows");
         return;
       }
+    } else if (isMetaTemplate && attachment) {
+      toast.error("Media sending is not supported for Meta WhatsApp campaigns");
+      return;
     } else if (!form.template_id && !form.message.trim() && !attachment) {
       toast.error("Provide a message, media, or approved template — or select an Agent");
       return;
@@ -516,10 +531,17 @@ const Campaigns = () => {
   };
 
   const templateOptionLabel = (t: WaTemplate) => {
+    const providerTag = t.provider === "meta" ? "Meta" : "Twilio";
+    const lang = t.meta_language_code || t.language || "";
     const wa = (t.whatsapp_approval_status || "").toLowerCase();
     const emoji = t.whatsapp_approval_emoji || "";
+    if (t.provider === "meta") {
+      return `${emoji || "🟢"} [${providerTag}] ${t.name}${lang ? ` · ${lang}` : ""} ${
+        t.whatsapp_sendable ? "(Approved)" : ""
+      }`.trim();
+    }
     if (wa === "approved" || t.whatsapp_sendable) {
-      return `${emoji || "🟢"} ${t.name} (Approved)`;
+      return `${emoji || "🟢"} [${providerTag}] ${t.name} (Approved)`;
     }
     if (wa === "under_review" || wa === "pending" || wa === "unsubmitted") {
       return `${emoji || "🟡"} ${t.name} — Waiting for Meta approval`;
@@ -534,8 +556,10 @@ const Campaigns = () => {
   };
 
   const isTemplateSelectable = (t: WaTemplate) => {
-    // Library must be approved; Meta sendable preferred. Unknown Meta status still selectable
-    // (live check happens at send / launch warning). Rejected/paused/under_review disabled.
+    if (form.content_mode === "ai_agent") {
+      return t.provider !== "meta" && t.status === "approved" && !!t.content_sid;
+    }
+    if (t.provider === "meta") return !!t.whatsapp_sendable;
     if (t.status !== "approved") return false;
     const wa = (t.whatsapp_approval_status || "").toLowerCase();
     if (!wa) return true;
@@ -566,6 +590,12 @@ const Campaigns = () => {
   const safePage = Math.min(page, totalPages);
   const pagedCampaigns = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
   const selectedTemplate = templates.find((t) => t.id === form.template_id);
+  const templateVarKeys = selectedTemplate
+    ? selectedTemplate.variable_schema?.length
+      ? selectedTemplate.variable_schema.map((s) => s.key)
+      : selectedTemplate.variables || []
+    : [];
+  const isMetaTemplate = selectedTemplate?.provider === "meta";
 
   return (
     <AppLayout>
@@ -929,8 +959,8 @@ const Campaigns = () => {
                         className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
                       >
                         <option value="">Select approved template</option>
-                        {templates.map((t) => (
-                          <option key={t.id} value={t.id} disabled={!isTemplateSelectable(t)}>
+                        {templates.filter((t) => isTemplateSelectable(t)).map((t) => (
+                          <option key={t.id} value={t.id}>
                             {templateOptionLabel(t)}
                           </option>
                         ))}
@@ -976,7 +1006,9 @@ const Campaigns = () => {
                         const id = e.target.value;
                         const t = templates.find((x) => x.id === id);
                         const vars: Record<string, string> = {};
-                        (t?.variables || []).forEach((k) => (vars[k] = ""));
+                        const keys =
+                          t?.variable_schema?.length ? t.variable_schema.map((s) => s.key) : t?.variables || [];
+                        keys.forEach((k) => (vars[k] = ""));
                         setForm({ ...form, template_id: id, templateVars: vars });
                         if (id) setAttachment(null);
                       }}
@@ -990,7 +1022,7 @@ const Campaigns = () => {
                       ))}
                     </select>
                   </div>
-                  {selectedTemplate?.variables?.map((key) => (
+                  {templateVarKeys.map((key) => (
                     <div key={key}>
                       <label className="text-sm text-muted-foreground mb-1.5 block">Variable {`{{${key}}}`}</label>
                       <input
@@ -1002,7 +1034,7 @@ const Campaigns = () => {
                       />
                     </div>
                   ))}
-                  {!form.template_id && (
+                  {!form.template_id && !isMetaTemplate && (
                     <>
                       <div>
                         <label className="text-sm text-muted-foreground mb-1.5 block">Message</label>
@@ -1116,7 +1148,14 @@ const Campaigns = () => {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-xl font-display font-bold">{detail.name}</h2>
-                <div className="mt-1">{statusBadge(detail.status)}</div>
+                <div className="mt-1 flex items-center gap-2">
+                  {statusBadge(detail.status)}
+                  {detail.provider === "meta" ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent">Meta</span>
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Twilio</span>
+                  )}
+                </div>
               </div>
               <button onClick={() => setDetail(null)}>
                 <X className="w-5 h-5 text-muted-foreground" />
