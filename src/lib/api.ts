@@ -158,6 +158,7 @@ export type Lead = {
   whatsapp_consent_at?: string | null;
   whatsapp_opted_out_at?: string | null;
   whatsapp_opt_out_reason?: string | null;
+  assigned_agent_id?: string | null;
   ai_paused?: boolean;
   needs_human?: boolean;
   takeover_by?: string | null;
@@ -538,6 +539,10 @@ export type Agent = {
   tone: "sales" | "support" | "neutral";
   knowledge_base: string | null;
   status: "active" | "inactive";
+  description?: string | null;
+  routing_keywords?: string[];
+  is_default?: boolean;
+  business_description?: string | null;
   callback_number?: string | null;
   logo_url?: string | null;
   cta_text?: string | null;
@@ -1191,7 +1196,21 @@ export type BillingInvoice = {
   period_end?: number | null;
 };
 
+export type UsageItem = { used?: number; limit?: number; enabled?: boolean };
+export type BillingUsage = {
+  plan: string;
+  plan_name: string;
+  items: {
+    ai_agents: UsageItem;
+    whatsapp_numbers: UsageItem;
+    ai_conversations_month: UsageItem;
+    campaigns: UsageItem;
+    whatsapp_broadcast: UsageItem;
+  };
+};
+
 export const billing = {
+  usage: () => api.get<BillingUsage>("/billing/usage"),
   plans: () =>
     api.get<{
       plans: BillingPlan[];

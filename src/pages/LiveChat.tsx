@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { leads as leadsApi, messages as messagesApi, templates as templatesApi, mediaApi, activityApi, conversationsApi, aiSuggestionsApi, agents as agentsApi, Lead, Message, WaTemplate, MediaUploadResult, ActivityEvent, ConversationSummary, AiSuggestion } from "@/lib/api";
 import { ChatSocket } from "@/lib/ws";
 import { MessageStatusLabel } from "@/components/MessageStatusLabel";
+import AgentAssign from "@/components/AgentAssign";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const TEMPLATE_PURPOSES = ["conversational", "support", "transactional", "marketing"] as const;
@@ -113,6 +114,7 @@ const MessageMedia = ({ message }: { message: Message }) => {
 const LiveChat = () => {
   const { user } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [newMessage, setNewMessage] = useState("");
@@ -143,6 +145,13 @@ const LiveChat = () => {
   useEffect(() => {
     activeLeadRef.current = activeLead;
   }, [activeLead]);
+
+  useEffect(() => {
+    agentsApi
+      .list()
+      .then((list) => setAgents(list.map((a) => ({ id: a.id, name: a.name }))))
+      .catch(() => undefined);
+  }, []);
 
   const fetchConversations = useCallback(async () => {
     try {
@@ -275,10 +284,6 @@ const LiveChat = () => {
     const isMetaChat = chatProvider === "meta";
     if (selectedTemplateId && attachment) {
       toast.error("Cannot attach media to a template message");
-      return;
-    }
-    if (isMetaChat && attachment) {
-      toast.error("Media sending is not yet supported for Meta WhatsApp conversations.");
       return;
     }
     if (!windowOpen && !selectedTemplateId) {
@@ -784,21 +789,18 @@ const LiveChat = () => {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={
-                      isMetaChat ||
                       !!activeLead.blacklisted ||
                       !windowOpen ||
                       !!selectedTemplateId ||
                       uploading
                     }
-                    className={`p-2.5 rounded-xl glass glass-border disabled:opacity-40 ${isMetaChat ? "hidden" : ""}`}
+                    className="p-2.5 rounded-xl glass glass-border disabled:opacity-40"
                     title={
-                      isMetaChat
-                        ? "Media is not yet supported for Meta conversations"
-                        : !windowOpen
-                          ? "Window closed"
-                          : selectedTemplateId
-                            ? "Clear template to attach media"
-                            : "Attach file"
+                      !windowOpen
+                        ? "Window closed"
+                        : selectedTemplateId
+                          ? "Clear template to attach media"
+                          : "Attach file"
                     }
                   >
                     <Paperclip className="w-4 h-4" />
@@ -863,6 +865,22 @@ const LiveChat = () => {
                 <p className="font-semibold">{activeLead.name}</p>
                 <p className="text-xs text-muted-foreground">{activeLead.phone || "No phone"}</p>
               </div>
+
+              {agents.length > 0 && (
+                <div className="bg-muted rounded-xl p-3">
+                  <p className="text-[10px] text-muted-foreground uppercase mb-1.5">Handled by</p>
+                  <AgentAssign
+                    leadId={activeLead.id}
+                    value={activeLead.assigned_agent_id}
+                    agents={agents}
+                    onChange={(aid) => setActiveLead((l) => (l ? { ...l, assigned_agent_id: aid } : l))}
+                    className="w-full bg-card rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Auto lets the router pick per message. Choosing an agent pins this conversation.
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-muted rounded-xl p-3">

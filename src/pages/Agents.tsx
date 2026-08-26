@@ -14,6 +14,10 @@ type FormState = {
   tone: "sales" | "support" | "neutral";
   knowledge_base: string;
   status: "active" | "inactive";
+  description: string;
+  routing_keywords: string;
+  is_default: boolean;
+  business_description: string;
   callback_number: string;
   logo_url: string;
   cta_text: string;
@@ -36,6 +40,10 @@ const emptyForm: FormState = {
   tone: "neutral",
   knowledge_base: "",
   status: "active",
+  description: "",
+  routing_keywords: "",
+  is_default: false,
+  business_description: "",
   callback_number: "",
   logo_url: "",
   cta_text: "",
@@ -106,6 +114,10 @@ const Agents = () => {
       tone: a.tone || "neutral",
       knowledge_base: a.knowledge_base || "",
       status: a.status || "active",
+      description: a.description || "",
+      routing_keywords: (a.routing_keywords || []).join(", "),
+      is_default: !!a.is_default,
+      business_description: a.business_description || "",
       callback_number: a.callback_number || "",
       logo_url: a.logo_url || "",
       cta_text: a.cta_text || "",
@@ -196,6 +208,13 @@ const Agents = () => {
       tone: form.tone,
       knowledge_base: form.knowledge_base.trim() || null,
       status: form.status,
+      description: form.description.trim() || null,
+      routing_keywords: form.routing_keywords
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean),
+      is_default: form.is_default,
+      business_description: form.business_description.trim() || null,
       callback_number: form.callback_number.trim() || null,
       logo_url: form.logo_url.trim() || null,
       cta_text: form.cta_text.trim() || null,
@@ -359,6 +378,32 @@ const Agents = () => {
                 <label className="text-sm text-muted-foreground mb-1.5 block">System Prompt / Instructions</label>
                 <textarea value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })} placeholder="Describe how this agent should behave..." rows={3} maxLength={4000}
                   className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 resize-none" />
+              </div>
+
+              <div className="rounded-xl border border-accent/20 bg-accent/5 p-4 space-y-3">
+                <p className="text-xs font-medium text-accent uppercase tracking-wide">Routing — when should this agent handle a message?</p>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1.5 block">Description / Domain</label>
+                  <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="e.g. Train ticket bookings & PNR status" maxLength={500}
+                    className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                  <p className="text-xs text-muted-foreground mt-1">Used by the router (and shown in the UI) to decide which agent fits an incoming message.</p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1.5 block">Routing Keywords</label>
+                  <input value={form.routing_keywords} onChange={(e) => setForm({ ...form, routing_keywords: e.target.value })} placeholder="train, pnr, irctc, ticket (comma-separated)"
+                    className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                  <p className="text-xs text-muted-foreground mt-1">Inbound messages matching any keyword route to this agent first (before the AI router).</p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1.5 block">Business Identity (optional, overrides account default)</label>
+                  <textarea value={form.business_description} onChange={(e) => setForm({ ...form, business_description: e.target.value })} placeholder="Who this agent represents — keeps multiple agents distinct." rows={2} maxLength={2000}
+                    className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 resize-none" />
+                </div>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={form.is_default} onChange={(e) => setForm({ ...form, is_default: e.target.checked })}
+                    className="w-4 h-4 rounded accent-accent" />
+                  <span>Default agent — handles anything no other agent matches</span>
+                </label>
               </div>
 
               <div className="grid md:grid-cols-3 gap-4">

@@ -19,13 +19,13 @@ const features = [
   { icon: BarChart3, title: "Lead Scoring", desc: "Every inbound is captured, scored, tagged and routed to the right agent flow." },
   { icon: Shield, title: "UK & GDPR Ready", desc: "E.164 +44 defaults, STOP/START keywords, welcome + T&C on first contact, DNC logging." },
   { icon: Zap, title: "Live Chat + Handoff", desc: "Watch conversations in real time. Step in any time — the AI hands over cleanly." },
-  { icon: MessageCircle, title: "Twilio Native", desc: "Plug your Twilio WhatsApp number in. We handle signature validation, inbound routing, and delivery." },
+  { icon: MessageCircle, title: "Twilio + Meta WhatsApp", desc: "Connect via Twilio or Meta WhatsApp Cloud API. We handle signature validation, inbound routing, and delivery for both." },
 ];
 
 const steps = [
-  { num: "1", title: "Connect Twilio", desc: "Plug in your Twilio WhatsApp credentials and pick your sender number." },
+  { num: "1", title: "Connect WhatsApp", desc: "Connect your number via Twilio, or link Meta WhatsApp in a few clicks with Embedded Signup." },
   { num: "2", title: "Build your agent", desc: "Pick a tone, add your knowledge, welcome message and T&C. Tweak the prompt." },
-  { num: "3", title: "Go live", desc: "Point Twilio's webhook at us. Inbound messages get AI replies instantly." },
+  { num: "3", title: "Go live", desc: "Your WhatsApp webhook points at us — inbound messages get AI replies instantly, on either provider." },
 ];
 
 const FALLBACK_PLANS: BillingPlan[] = [
@@ -165,7 +165,7 @@ const LandingPage = () => {
             AI WhatsApp agents that sell and support while you sleep
           </motion.h1>
           <motion.p {...fadeUp} transition={{ delay: 0.1, duration: 0.6 }} className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Connect Twilio, train an agent on your business, and go live — with GDPR-ready consent, blasts, and live handoff built in.
+            Connect WhatsApp via Twilio or Meta, train an agent on your business, and go live — with GDPR-ready consent, blasts, and live handoff built in.
           </motion.p>
           <motion.div {...fadeUp} transition={{ delay: 0.2, duration: 0.6 }} className="flex flex-wrap justify-center gap-3">
             <a href={BOOK_DEMO_URL} target="_blank" rel="noopener noreferrer" className="px-8 py-3 rounded-full gradient-green text-primary-foreground font-medium glow-green">

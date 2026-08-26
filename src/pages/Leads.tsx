@@ -6,16 +6,19 @@ import { toast } from "sonner";
 import {
   leads as leadsApi,
   blacklist as blacklistApi,
+  agents as agentsApi,
   Lead,
   LeadImportResult,
   LeadListParams,
   tokenStore,
   API_BASE,
 } from "@/lib/api";
+import AgentAssign from "@/components/AgentAssign";
 
 const Leads = () => {
   const { user } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
@@ -93,6 +96,13 @@ const Leads = () => {
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
+
+  useEffect(() => {
+    agentsApi
+      .list()
+      .then((list) => setAgents(list.map((a) => ({ id: a.id, name: a.name }))))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
@@ -580,7 +590,22 @@ const Leads = () => {
                       .slice(0, 2)}
                   </span>
                 </div>
-                <p className="font-medium text-sm truncate">{lead.name}</p>
+                <div className="min-w-0">
+                  <p className="font-medium text-sm truncate">{lead.name}</p>
+                  {agents.length > 0 && (
+                    <AgentAssign
+                      leadId={lead.id}
+                      value={lead.assigned_agent_id}
+                      agents={agents}
+                      onChange={(aid) =>
+                        setLeads((prev) =>
+                          prev.map((x) => (x.id === lead.id ? { ...x, assigned_agent_id: aid } : x)),
+                        )
+                      }
+                      className="mt-1 max-w-[10rem] bg-muted rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent/30"
+                    />
+                  )}
+                </div>
               </div>
               <p className="text-sm text-muted-foreground">{lead.phone || "—"}</p>
               <div>
