@@ -66,10 +66,17 @@ const AppSidebar = () => {
       </nav>
 
       <div className="px-3 pb-4 space-y-1">
-        <button className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent w-full">
+        <Link
+          to="/help"
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+            location.pathname === "/help"
+              ? "bg-accent/10 text-accent font-medium"
+              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          }`}
+        >
           <HelpCircle className="w-5 h-5" />
           Help
-        </button>
+        </Link>
         <button onClick={handleSignOut} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent w-full">
           <LogOut className="w-5 h-5" />
           Sign Out

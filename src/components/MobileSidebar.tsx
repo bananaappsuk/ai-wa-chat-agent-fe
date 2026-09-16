@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Bot, Megaphone, Users, MessageCircle, Settings, X, LogOut, Shield, Send, History, CreditCard } from "lucide-react";
+import { LayoutDashboard, Bot, Megaphone, Users, MessageCircle, Settings, X, LogOut, Shield, Send, History, CreditCard, HelpCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
@@ -56,7 +56,19 @@ const MobileSidebar = ({ open, onClose }: { open: boolean; onClose: () => void }
             );
           })}
         </nav>
-        <div className="mt-4 pt-4 border-t border-sidebar-border">
+        <div className="mt-4 pt-4 border-t border-sidebar-border space-y-1">
+          <Link
+            to="/help"
+            onClick={onClose}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+              location.pathname === "/help"
+                ? "bg-accent/10 text-accent font-medium"
+                : "text-sidebar-foreground hover:bg-sidebar-accent"
+            }`}
+          >
+            <HelpCircle className="w-5 h-5" />
+            Help
+          </Link>
           <button onClick={handleSignOut} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent w-full">
             <LogOut className="w-5 h-5" />
             Sign Out

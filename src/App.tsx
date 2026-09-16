@@ -24,6 +24,7 @@ import AiAnalytics from "./pages/AiAnalytics";
 import WhatsAppBlast from "./pages/WhatsAppBlast";
 import Templates from "./pages/Templates";
 import Billing from "./pages/Billing";
+import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
 
 const App = () => (
@@ -52,6 +53,7 @@ const App = () => (
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/settings/whatsapp-templates" element={<ProtectedRoute><WhatsAppTemplatesSettings /></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
+            <Route path="/help" element={<ProtectedRoute><Help /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
