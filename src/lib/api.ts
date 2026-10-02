@@ -543,6 +543,7 @@ export type Agent = {
   routing_keywords?: string[];
   is_default?: boolean;
   business_description?: string | null;
+  knowledge_base_ids?: string[];
   callback_number?: string | null;
   logo_url?: string | null;
   cta_text?: string | null;
@@ -558,6 +559,137 @@ export type Agent = {
   price_ceiling?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+// --- Knowledge bases (retrieval) --------------------------------------------------------
+
+export type KnowledgeBase = {
+  id: string;
+  name: string;
+  description?: string | null;
+  chunks_to_retrieve: number;
+  similarity_threshold: number;
+  auto_refresh: boolean;
+  source_count: number;
+  processing_count: number;
+  failed_count: number;
+  chunk_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KbSourceType = "url" | "crawl" | "file" | "text";
+export type KbSourceStatus = "queued" | "processing" | "ready" | "partial" | "failed";
+
+export type KbCrawlOptions = {
+  include_paths?: string[];
+  exclude_paths?: string[];
+  max_pages?: number;
+  max_depth?: number;
+};
+
+export type KbSource = {
+  id: string;
+  kb_id: string;
+  type: KbSourceType;
+  title?: string | null;
+  url?: string | null;
+  filename?: string | null;
+  crawl?: KbCrawlOptions;
+  status: KbSourceStatus;
+  error?: string | null;
+  stats?: { pages?: number; chunks?: number; fetched?: number; errors?: number; skipped_robots?: number; thin?: number; stopped_reason?: string };
+  last_synced_at?: string | null;
+  next_sync_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KbDocument = {
+  id: string;
+  url?: string;
+  key: string;
+  title: string;
+  chars: number;
+  chunk_count: number;
+  updated_at: string;
+};
+
+export type KbTestResult = {
+  question: string;
+  threshold: number;
+  chunks_to_retrieve: number;
+  answer: string | null;
+  results: {
+    chunk_id: string;
+    score: number;
+    text: string;
+    heading: string;
+    title: string;
+    url: string;
+    used: boolean;
+  }[];
+};
+
+export type KbGap = {
+  id: string;
+  question: string;
+  agent_name?: string | null;
+  lead_id?: string;
+  created_at: string;
+};
+
+export type KbSourceCreate =
+  | { type: "url"; url: string; title?: string }
+  | { type: "crawl"; url: string; title?: string; crawl?: KbCrawlOptions }
+  | { type: "text"; title?: string; content: string };
+
+async function uploadForm<T>(path: string, fd: FormData): Promise<T> {
+  const headers: Record<string, string> = {};
+  const tok = tokenStore.get();
+  if (tok) headers["Authorization"] = `Bearer ${tok}`;
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: fd });
+  const text = await res.text();
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { detail: text };
+  }
+  if (!res.ok) {
+    const detail = data && typeof data === "object" && "detail" in data ? (data as { detail: unknown }).detail : null;
+    const msg =
+      typeof detail === "string"
+        ? detail
+        : detail && typeof detail === "object" && "message" in detail
+          ? String((detail as { message: unknown }).message)
+          : res.statusText || "Upload failed";
+    throw new ApiError(res.status, msg);
+  }
+  return data as T;
+}
+
+export const knowledgeBases = {
+  list: () => api.get<KnowledgeBase[]>("/knowledge-bases"),
+  get: (id: string) => api.get<KnowledgeBase>(`/knowledge-bases/${id}`),
+  create: (b: { name: string; description?: string }) => api.post<KnowledgeBase>("/knowledge-bases", b),
+  update: (id: string, b: Partial<Pick<KnowledgeBase, "name" | "description" | "chunks_to_retrieve" | "similarity_threshold" | "auto_refresh">>) =>
+    api.patch<KnowledgeBase>(`/knowledge-bases/${id}`, b),
+  remove: (id: string) => api.del<void>(`/knowledge-bases/${id}`),
+  sources: (id: string) => api.get<KbSource[]>(`/knowledge-bases/${id}/sources`),
+  addSource: (id: string, b: KbSourceCreate) => api.post<KbSource>(`/knowledge-bases/${id}/sources`, b),
+  uploadSource: (id: string, file: File, title?: string) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    if (title) fd.append("title", title);
+    return uploadForm<KbSource>(`/knowledge-bases/${id}/sources/upload`, fd);
+  },
+  resync: (id: string, sourceId: string) => api.post<KbSource>(`/knowledge-bases/${id}/sources/${sourceId}/resync`),
+  removeSource: (id: string, sourceId: string) => api.del<void>(`/knowledge-bases/${id}/sources/${sourceId}`),
+  documents: (id: string, sourceId: string) => api.get<KbDocument[]>(`/knowledge-bases/${id}/sources/${sourceId}/documents`),
+  test: (id: string, question: string, withAnswer = true) =>
+    api.post<KbTestResult>(`/knowledge-bases/${id}/test`, { question, with_answer: withAnswer }),
+  gaps: (limit = 50) => api.get<KbGap[]>(`/knowledge-bases/gaps?limit=${limit}`),
 };
 
 export type AgentCampaignOption = {
@@ -1206,6 +1338,8 @@ export type BillingUsage = {
     ai_conversations_month: UsageItem;
     campaigns: UsageItem;
     whatsapp_broadcast: UsageItem;
+    knowledge_bases?: UsageItem;
+    kb_chunks?: UsageItem;
   };
 };
 

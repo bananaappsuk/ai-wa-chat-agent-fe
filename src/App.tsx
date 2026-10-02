@@ -15,6 +15,7 @@ import Dashboard from "./pages/Dashboard";
 import Leads from "./pages/Leads";
 import Campaigns from "./pages/Campaigns";
 import Agents from "./pages/Agents";
+import Knowledge from "./pages/Knowledge";
 import LiveChat from "./pages/LiveChat";
 import Settings from "./pages/Settings";
 import WhatsAppTemplatesSettings from "./pages/WhatsAppTemplatesSettings";
@@ -45,6 +46,7 @@ const App = () => (
             <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
             <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
             <Route path="/agents" element={<ProtectedRoute><Agents /></ProtectedRoute>} />
+            <Route path="/knowledge" element={<ProtectedRoute><Knowledge /></ProtectedRoute>} />
             <Route path="/live-chat" element={<ProtectedRoute><LiveChat /></ProtectedRoute>} />
             <Route path="/whatsapp-blast" element={<ProtectedRoute><WhatsAppBlast /></ProtectedRoute>} />
             <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />

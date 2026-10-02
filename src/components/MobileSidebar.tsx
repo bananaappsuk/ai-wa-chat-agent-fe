@@ -1,10 +1,11 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Bot, Megaphone, Users, MessageCircle, Settings, X, LogOut, Shield, Send, History, CreditCard, HelpCircle } from "lucide-react";
+import { LayoutDashboard, Bot, BookOpen, Megaphone, Users, MessageCircle, Settings, X, LogOut, Shield, Send, History, CreditCard, HelpCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
   { icon: Bot, label: "Agents", path: "/agents" },
+  { icon: BookOpen, label: "Knowledge", path: "/knowledge" },
   { icon: Megaphone, label: "Campaigns", path: "/campaigns" },
   { icon: Send, label: "WA Blast", path: "/whatsapp-blast" },
   { icon: Users, label: "Leads", path: "/leads" },

@@ -3,7 +3,8 @@ import { Plus, Bot, Play, Settings, X, Trash2, Pencil, Upload } from "lucide-rea
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { agents as agentsApi, Agent, AgentKind, SocialLinks } from "@/lib/api";
+import { agents as agentsApi, Agent, AgentKind, SocialLinks, knowledgeBases as kbApi, KnowledgeBase } from "@/lib/api";
+import { Link } from "react-router-dom";
 
 const KB_MAX = 10000;
 
@@ -18,6 +19,7 @@ type FormState = {
   routing_keywords: string;
   is_default: boolean;
   business_description: string;
+  knowledge_base_ids: string[];
   callback_number: string;
   logo_url: string;
   cta_text: string;
@@ -44,6 +46,7 @@ const emptyForm: FormState = {
   routing_keywords: "",
   is_default: false,
   business_description: "",
+  knowledge_base_ids: [],
   callback_number: "",
   logo_url: "",
   cta_text: "",
@@ -85,6 +88,7 @@ const Agents = () => {
   const [saving, setSaving] = useState(false);
   const [kbUploading, setKbUploading] = useState(false);
   const kbFileRef = useRef<HTMLInputElement>(null);
+  const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
 
   const fetchAgents = async () => {
     try {
@@ -97,7 +101,10 @@ const Agents = () => {
     }
   };
 
-  useEffect(() => { fetchAgents(); }, []);
+  useEffect(() => {
+    fetchAgents();
+    kbApi.list().then(setKbs).catch(() => setKbs([]));
+  }, []);
 
   const openNew = () => {
     setEditingAgent(null);
@@ -118,6 +125,7 @@ const Agents = () => {
       routing_keywords: (a.routing_keywords || []).join(", "),
       is_default: !!a.is_default,
       business_description: a.business_description || "",
+      knowledge_base_ids: a.knowledge_base_ids || [],
       callback_number: a.callback_number || "",
       logo_url: a.logo_url || "",
       cta_text: a.cta_text || "",
@@ -215,6 +223,7 @@ const Agents = () => {
         .filter(Boolean),
       is_default: form.is_default,
       business_description: form.business_description.trim() || null,
+      knowledge_base_ids: form.knowledge_base_ids,
       callback_number: form.callback_number.trim() || null,
       logo_url: form.logo_url.trim() || null,
       cta_text: form.cta_text.trim() || null,
@@ -522,9 +531,51 @@ const Agents = () => {
                   className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 resize-none" />
               </div>
 
+              <div className="rounded-xl border border-accent/20 bg-accent/5 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-accent uppercase tracking-wide">Knowledge bases — what this agent answers from</p>
+                  <Link to="/knowledge" className="text-xs text-accent hover:underline">Manage</Link>
+                </div>
+                {kbs.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No knowledge bases yet. <Link to="/knowledge" className="text-accent hover:underline">Create one</Link> from your website or documents, then link it here.
+                  </p>
+                ) : (
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    {kbs.map((kb) => {
+                      const on = form.knowledge_base_ids.includes(kb.id);
+                      return (
+                        <label key={kb.id} className={`flex items-start gap-2 rounded-lg p-2.5 cursor-pointer text-sm ${on ? "bg-accent/10 ring-1 ring-accent/40" : "bg-muted"}`}>
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={(e) =>
+                              setForm((prev) => ({
+                                ...prev,
+                                knowledge_base_ids: e.target.checked
+                                  ? [...prev.knowledge_base_ids, kb.id].slice(0, 10)
+                                  : prev.knowledge_base_ids.filter((x) => x !== kb.id),
+                              }))
+                            }
+                            className="w-4 h-4 mt-0.5 rounded accent-accent"
+                          />
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">{kb.name}</span>
+                            <span className="block text-xs text-muted-foreground">{kb.source_count} sources · {kb.chunk_count.toLocaleString()} chunks</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  When linked, replies use the most relevant pieces of these knowledge bases. The pasted text below is then only a fallback.
+                </p>
+              </div>
+
               <div>
                 <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <label className="text-sm text-muted-foreground">Knowledge Base</label>
+                  <label className="text-sm text-muted-foreground">Pasted knowledge (legacy)</label>
                   <div className="flex items-center gap-2">
                     <input
                       ref={kbFileRef}
