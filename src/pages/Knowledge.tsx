@@ -51,7 +51,9 @@ const STATUS_META: Record<KbSourceStatus, { label: string; cls: string }> = {
 
 function ago(iso?: string | null): string {
   if (!iso) return "—";
-  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  // API timestamps are UTC; treat any without an offset as UTC rather than local time.
+  const utc = /[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`;
+  const s = Math.max(0, (Date.now() - new Date(utc).getTime()) / 1000);
   if (s < 60) return "just now";
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
