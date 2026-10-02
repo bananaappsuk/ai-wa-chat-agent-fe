@@ -521,7 +521,7 @@ const WhatsAppBlast = () => {
                   <p className="text-xs text-muted-foreground">
                     Free-form blasts only deliver to recipients inside the 24-hour WhatsApp window.
                     Recipients with no recent inbound (or no lead) need an approved template.
-                    Marketing purpose requires explicit WhatsApp opt-in — for sandbox testing choose Conversational + template.
+                    Marketing purpose requires explicit WhatsApp opt-in.
                     Media requires PUBLIC_BASE_URL so Twilio can fetch the file. Blacklisted numbers are skipped.
                   </p>
                 </div>

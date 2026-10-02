@@ -355,7 +355,7 @@ const Settings = () => {
                     <input
                       value={twilioRouting}
                       onChange={(e) => setTwilioRouting(e.target.value)}
-                      placeholder="+14155238886"
+                      placeholder="+15559822197"
                       maxLength={32}
                       className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
                     />
