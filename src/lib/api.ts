@@ -160,6 +160,7 @@ export type Lead = {
   whatsapp_opt_out_reason?: string | null;
   assigned_agent_id?: string | null;
   ai_paused?: boolean;
+  ai_paused_at?: string | null;
   needs_human?: boolean;
   takeover_by?: string | null;
   takeover_at?: string | null;

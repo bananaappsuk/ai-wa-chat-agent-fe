@@ -1,5 +1,5 @@
 import AppLayout from "@/components/AppLayout";
-import { Search, Plus, Send, X, MessageCircle, Phone, Paperclip, ChevronDown } from "lucide-react";
+import { Search, Plus, Send, X, MessageCircle, Phone, Paperclip, ChevronDown, PauseCircle } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -502,13 +502,23 @@ const LiveChat = () => {
                       </div>
                       <p className="text-xs text-muted-foreground truncate mt-0.5">{lead.phone || "No phone"}</p>
                       {(lead.ai_paused || lead.takeover_by || lead.needs_human) && (
-                        <p className="text-[10px] mt-1 text-muted-foreground truncate">
-                          {[
-                            lead.needs_human ? "Needs human" : null,
-                            lead.takeover_by ? "Takeover" : null,
-                            lead.ai_paused ? "AI paused" : null,
-                          ].filter(Boolean).join(" · ")}
-                        </p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {lead.ai_paused && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-500 font-medium">
+                              AI paused
+                            </span>
+                          )}
+                          {lead.takeover_by && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent font-medium">
+                              Takeover
+                            </span>
+                          )}
+                          {lead.needs_human && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive/10 text-destructive font-medium">
+                              Needs human
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -635,6 +645,37 @@ const LiveChat = () => {
                   )}
                 </div>
               </div>
+
+              {(aiPaused || humanTakeover) && (
+                <div
+                  role="status"
+                  className="flex items-center gap-3 px-4 py-2.5 border-b border-yellow-500/30 bg-yellow-500/10 text-sm"
+                >
+                  <PauseCircle className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+                  <p className="flex-1 min-w-0">
+                    <span className="font-medium">
+                      {humanTakeover ? "A team member has taken over this chat." : "AI is paused for this contact."}
+                    </span>{" "}
+                    <span className="text-muted-foreground">
+                      New messages won't get automatic replies
+                      {!humanTakeover && activeLead.ai_paused_at
+                        ? ` (paused ${new Date(activeLead.ai_paused_at).toLocaleString()})`
+                        : ""}
+                      .
+                    </span>
+                  </p>
+                  <button
+                    onClick={() =>
+                      humanTakeover
+                        ? runLeadAction(() => leadsApi.handBack(activeLead.id), "Handed back to AI")
+                        : runLeadAction(() => leadsApi.resumeAi(activeLead.id), "AI resumed")
+                    }
+                    className="text-xs px-3 py-1 rounded-lg gradient-green text-primary-foreground flex-shrink-0"
+                  >
+                    {humanTakeover ? "Hand back to AI" : "Resume AI"}
+                  </button>
+                </div>
+              )}
 
               <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
                 {messages.length === 0 ? (

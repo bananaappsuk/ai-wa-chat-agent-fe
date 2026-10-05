@@ -591,7 +591,17 @@ const Leads = () => {
                   </span>
                 </div>
                 <div className="min-w-0">
-                  <p className="font-medium text-sm truncate">{lead.name}</p>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <p className="font-medium text-sm truncate">{lead.name}</p>
+                    {(lead.ai_paused || lead.takeover_by) && (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-500 font-medium flex-shrink-0"
+                        title="This contact gets no automatic AI replies"
+                      >
+                        {lead.takeover_by ? "Takeover" : "AI paused"}
+                      </span>
+                    )}
+                  </div>
                   {agents.length > 0 && (
                     <AgentAssign
                       leadId={lead.id}

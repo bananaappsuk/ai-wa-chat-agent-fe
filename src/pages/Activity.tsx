@@ -74,6 +74,8 @@ const Activity = () => {
             <option value="user.login">Logins</option>
             <option value="profile.updated">Profile</option>
             <option value="lead.takeover">Takeover</option>
+            <option value="lead.ai_pause">AI paused</option>
+            <option value="lead.ai_resume">AI resumed</option>
             <option value="lead.needs_human">Needs human</option>
             <option value="consent.opt_out">Opt-outs</option>
             <option value="leads.import">Imports</option>
