@@ -46,7 +46,7 @@ const AppSidebar = () => {
         <p className="text-xs text-muted-foreground">ENTERPRISE HUB</p>
       </div>
 
-      <nav className="flex-1 px-3 space-y-1">
+      <nav className="flex-1 min-h-0 overflow-y-auto px-3 space-y-1">
         {allNavItems.map((item) => {
           const active = location.pathname === item.path;
           return (

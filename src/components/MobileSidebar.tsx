@@ -34,7 +34,7 @@ const MobileSidebar = ({ open, onClose }: { open: boolean; onClose: () => void }
   return (
     <div className="fixed inset-0 z-50 lg:hidden">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="absolute left-0 top-0 h-full w-64 bg-sidebar p-4">
+      <div className="absolute left-0 top-0 h-full w-64 bg-sidebar p-4 overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
           <span className="text-accent font-display font-bold text-lg">AI Chat</span>
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>

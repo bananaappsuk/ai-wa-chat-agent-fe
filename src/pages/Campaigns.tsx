@@ -898,12 +898,12 @@ const Campaigns = () => {
                       }
                       className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
                     >
-                      <option value="none">No knowledge base — use generative AI</option>
-                      <option value="agent">Use agent knowledge base — no generative AI</option>
+                      <option value="none">No knowledge base — AI writes from your goal</option>
+                      <option value="agent">Use agent knowledge base — AI writes from its facts</option>
                     </select>
                     <p className="text-[11px] text-muted-foreground mt-1">
                       {form.use_agent_knowledge
-                        ? "Sends the selected agent’s knowledge base text to leads (not AI-written)."
+                        ? "AI writes a short message using only facts from the selected agent’s knowledge base."
                         : "AI writes the message from your campaign goal/instructions."}
                     </p>
                   </div>
@@ -1034,6 +1034,12 @@ const Campaigns = () => {
                       />
                     </div>
                   ))}
+                  {templateVarKeys.length > 0 && !isMetaTemplate && (
+                    <p className="text-[11px] text-muted-foreground -mt-2">
+                      Leave a name variable blank to greet each contact by their first name (e.g. {'"Hi {{1}}"'}). A
+                      typed value is sent to every recipient.
+                    </p>
+                  )}
                   {!form.template_id && !isMetaTemplate && (
                     <>
                       <div>
