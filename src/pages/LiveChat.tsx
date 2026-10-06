@@ -111,6 +111,21 @@ const MessageMedia = ({ message }: { message: Message }) => {
   );
 };
 
+const MISSED_REASON: Record<string, string> = {
+  replying: "AI replying",
+  ai_paused: "AI paused",
+  human_takeover: "Takeover",
+  window_closed: "Window closed",
+  reply_failed: "Needs reply",
+};
+
+function waitingLabel(m: { since?: string; reason?: string }): string {
+  const mins = m.since ? Math.max(1, Math.round((Date.now() - new Date(m.since).getTime()) / 60000)) : 0;
+  const waited = mins >= 120 ? `${Math.round(mins / 60)}h` : `${mins}m`;
+  const reason = (m.reason || "").startsWith("ai_down") ? "AI down" : MISSED_REASON[m.reason || ""] || "";
+  return `Waiting ${waited}${reason ? ` · ${reason}` : ""}`;
+}
+
 const LiveChat = () => {
   const { user } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -119,6 +134,7 @@ const LiveChat = () => {
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [onlyUnanswered, setOnlyUnanswered] = useState(false);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showNewChat, setShowNewChat] = useState(false);
@@ -405,9 +421,11 @@ const LiveChat = () => {
     }
   };
 
-  const filteredLeads = leads.filter(l =>
-    l.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (l.phone || "").includes(searchQuery)
+  const unansweredCount = leads.filter((l) => l.missed_reply).length;
+  const filteredLeads = leads.filter(
+    (l) =>
+      (!onlyUnanswered || !!l.missed_reply) &&
+      (l.name.toLowerCase().includes(searchQuery.toLowerCase()) || (l.phone || "").includes(searchQuery)),
   );
 
   const initials = (name: string) => name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
@@ -467,6 +485,17 @@ const LiveChat = () => {
                 <Plus className="w-4 h-4 text-primary-foreground" />
               </button>
             </div>
+            <button
+              onClick={() => setOnlyUnanswered((v) => !v)}
+              aria-pressed={onlyUnanswered}
+              className={`w-full text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                onlyUnanswered
+                  ? "border-destructive/40 bg-destructive/10 text-destructive"
+                  : "border-border text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {onlyUnanswered ? "Showing unanswered only" : "Unanswered"} ({unansweredCount})
+            </button>
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto">
@@ -501,8 +530,16 @@ const LiveChat = () => {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground truncate mt-0.5">{lead.phone || "No phone"}</p>
-                      {(lead.ai_paused || lead.takeover_by || lead.needs_human) && (
+                      {(lead.ai_paused || lead.takeover_by || lead.needs_human || lead.missed_reply) && (
                         <div className="flex flex-wrap gap-1 mt-1">
+                          {lead.missed_reply && (
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive/15 text-destructive font-medium"
+                              title="This customer is waiting for a reply"
+                            >
+                              {waitingLabel(lead.missed_reply)}
+                            </span>
+                          )}
                           {lead.ai_paused && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-500 font-medium">
                               AI paused
