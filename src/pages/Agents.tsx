@@ -7,6 +7,7 @@ import { agents as agentsApi, Agent, AgentKind, SocialLinks, knowledgeBases as k
 import { Link } from "react-router-dom";
 
 const KB_MAX = 10000;
+const PROMPT_MAX = 10000;
 
 type FormState = {
   name: string;
@@ -385,8 +386,9 @@ const Agents = () => {
 
               <div>
                 <label className="text-sm text-muted-foreground mb-1.5 block">System Prompt / Instructions</label>
-                <textarea value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })} placeholder="Describe how this agent should behave..." rows={3} maxLength={4000}
+                <textarea value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })} placeholder="Describe how this agent should behave..." rows={3} maxLength={PROMPT_MAX}
                   className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 resize-none" />
+                <p className="text-xs text-muted-foreground mt-1">{(form.prompt || "").length}/{PROMPT_MAX} characters</p>
               </div>
 
               <div className="rounded-xl border border-accent/20 bg-accent/5 p-4 space-y-3">
@@ -569,13 +571,13 @@ const Agents = () => {
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  When linked, replies use the most relevant pieces of these knowledge bases. The pasted text below is then only a fallback.
+                  When linked, replies use the most relevant pieces of these knowledge bases together with the pasted text below — the agent answers from whichever has the detail.
                 </p>
               </div>
 
               <div>
                 <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <label className="text-sm text-muted-foreground">Pasted knowledge (legacy)</label>
+                  <label className="text-sm text-muted-foreground">Pasted knowledge</label>
                   <div className="flex items-center gap-2">
                     <input
                       ref={kbFileRef}
