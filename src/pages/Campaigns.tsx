@@ -661,7 +661,12 @@ const Campaigns = () => {
               <tbody>
                 {pagedCampaigns.map((c) => (
                   <tr key={c.id} className="border-b border-border/60">
-                    <td className="px-4 py-3 font-medium">{c.name}</td>
+                    <td className="px-4 py-3 font-medium">
+                      {c.name}
+                      {c.status === "paused" && c.pause_reason && (
+                        <p className="text-[11px] font-normal text-yellow-500 mt-1 max-w-xs">{c.pause_reason}</p>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
                       {c.content_mode === "ai_agent"
                         ? `AI · ${c.agent_snapshot?.name || "Agent"}`

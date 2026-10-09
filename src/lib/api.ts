@@ -739,6 +739,7 @@ export const agents = {
 
 export type Campaign = {
   id: string;
+  pause_reason?: string | null;
   user_id?: string;
   name: string;
   description?: string | null;
@@ -941,6 +942,7 @@ export type Blast = {
   undelivered_count?: number;
   status: string;
   last_error?: string | null;
+  pause_reason?: string | null;
   created_at: string;
 };
 
@@ -957,6 +959,9 @@ export const blasts = {
   }) => api.post<Blast>("/blasts", b),
   recipients: (id: string) => api.get<Array<{ id: string; phone: string; status: string; error?: string }>>(`/blasts/${id}/recipients`),
   remove: (id: string) => api.del<void>(`/blasts/${id}`),
+  pause: (id: string) => api.post<Blast>(`/blasts/${id}/pause`, {}),
+  resume: (id: string) => api.post<Blast>(`/blasts/${id}/resume`, {}),
+  retryFailed: (id: string) => api.post<Blast & { retried?: number }>(`/blasts/${id}/retry-failed`, {}),
 };
 
 export type AdminUser = ApiUser & { roles: string[]; company_name?: string | null };

@@ -1,6 +1,6 @@
 import AppLayout from "@/components/AppLayout";
 import TemplatePreview from "@/components/TemplatePreview";
-import { Upload, Send, X, FileSpreadsheet, Trash2, Eye, MessageCircle, AlertCircle } from "lucide-react";
+import { Upload, Send, X, FileSpreadsheet, Trash2, Eye, MessageCircle, AlertCircle, Pause, Play, RotateCcw } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -92,6 +92,7 @@ const WhatsAppBlast = () => {
         read_count?: number;
         undelivered_count?: number;
         status?: string;
+        pause_reason?: string | null;
         total_recipients?: number;
         recipient_id?: string;
         recipient_status?: string;
@@ -108,6 +109,7 @@ const WhatsAppBlast = () => {
                 read_count: data.read_count ?? b.read_count,
                 undelivered_count: data.undelivered_count ?? b.undelivered_count,
                 status: data.status ?? b.status,
+                pause_reason: "pause_reason" in data ? data.pause_reason : b.pause_reason,
                 total_recipients: data.total_recipients ?? b.total_recipients,
               }
             : b
@@ -266,6 +268,21 @@ const WhatsAppBlast = () => {
     try {
       const recipients = await blastsApi.recipients(blast.id);
       setViewRecipients(recipients);
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  };
+
+  const handleBlastAction = async (b: Blast, action: "pause" | "resume" | "retryFailed") => {
+    try {
+      if (action === "retryFailed") {
+        const res = await blastsApi.retryFailed(b.id);
+        toast.success(res.retried ? `Retrying ${res.retried} failed number${res.retried === 1 ? "" : "s"}` : "Resumed sending");
+      } else {
+        await blastsApi[action](b.id);
+        toast.success(action === "pause" ? "Blast paused" : "Blast resumed");
+      }
+      fetchBlasts();
     } catch (err) {
       toast.error((err as Error).message);
     }
@@ -675,11 +692,14 @@ const WhatsAppBlast = () => {
                     {b.status === "failed" && b.last_error && (
                       <p className="text-[11px] text-destructive mt-1 line-clamp-2">{b.last_error}</p>
                     )}
+                    {b.status === "paused" && b.pause_reason && (
+                      <p className="text-[11px] text-yellow-500 mt-1 line-clamp-3">{b.pause_reason}</p>
+                    )}
                   </div>
                   <div className="lg:w-1/6">
                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                       b.status === "completed" ? "bg-accent/10 text-accent" :
-                      b.status === "sending" || b.status === "queued" ? "bg-yellow-500/10 text-yellow-500" :
+                      b.status === "sending" || b.status === "queued" || b.status === "paused" ? "bg-yellow-500/10 text-yellow-500" :
                       b.status === "failed" ? "bg-destructive/10 text-destructive" :
                       "bg-muted text-muted-foreground"
                     }`}>
@@ -694,6 +714,25 @@ const WhatsAppBlast = () => {
                     {b.failed_count > 0 ? ` · ${b.failed_count} failed` : ""}
                   </div>
                   <div className="flex items-center gap-2 lg:w-1/6 justify-end">
+                    {b.status === "sending" && (
+                      <button onClick={() => handleBlastAction(b, "pause")} className="p-2 rounded-lg hover:bg-muted" title="Pause">
+                        <Pause className="w-4 h-4 text-muted-foreground" />
+                      </button>
+                    )}
+                    {b.status === "paused" && (
+                      <button onClick={() => handleBlastAction(b, "resume")} className="p-2 rounded-lg hover:bg-muted" title="Resume">
+                        <Play className="w-4 h-4 text-accent" />
+                      </button>
+                    )}
+                    {b.failed_count > 0 && b.status !== "cancelled" && (
+                      <button
+                        onClick={() => handleBlastAction(b, "retryFailed")}
+                        className="flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-muted text-xs text-accent"
+                        title="Send again to the numbers that failed"
+                      >
+                        <RotateCcw className="w-4 h-4" /> Retry failed ({b.failed_count})
+                      </button>
+                    )}
                     <button onClick={() => handleViewBlast(b)} className="p-2 rounded-lg hover:bg-muted">
                       <Eye className="w-4 h-4 text-muted-foreground" />
                     </button>
