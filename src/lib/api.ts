@@ -514,6 +514,7 @@ export const templates = {
     return api.get<WaTemplate[]>(`/templates${suffix}`);
   },
   get: (id: string) => api.get<WaTemplate>(`/templates/${id}`),
+  preview: (id: string) => api.get<{ id: string; name: string; body: string }>(`/templates/${id}/preview`),
   create: (b: Partial<WaTemplate>) => api.post<WaTemplate>("/templates", b),
   update: (id: string, b: Partial<WaTemplate>) => api.patch<WaTemplate>(`/templates/${id}`, b),
   remove: (id: string) => api.del<void>(`/templates/${id}`),

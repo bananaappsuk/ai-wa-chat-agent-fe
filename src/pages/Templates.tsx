@@ -1,6 +1,7 @@
 import AppLayout from "@/components/AppLayout";
-import { Plus, Pencil, Trash2, X, RefreshCw, Copy } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import TemplatePreview from "@/components/TemplatePreview";
+import { Plus, Pencil, Trash2, X, RefreshCw, Copy, Eye } from "lucide-react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { templates as templatesApi, TemplateStatus, WaTemplate } from "@/lib/api";
@@ -33,6 +34,7 @@ const Templates = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [syncingMeta, setSyncingMeta] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [viewId, setViewId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<WaTemplate | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -240,7 +242,8 @@ const Templates = () => {
               </thead>
               <tbody>
                 {pagedItems.map((t) => (
-                  <tr key={t.id} className="border-b border-border/60">
+                  <Fragment key={t.id}>
+                  <tr className="border-b border-border/60">
                     <td className="px-4 py-3 font-medium">{t.name}</td>
                     <td className="px-4 py-3 text-xs">
                       {(t.provider || "twilio_content") === "meta" ? "Meta" : "Twilio"}
@@ -256,6 +259,13 @@ const Templates = () => {
                     <td className="px-4 py-3">{t.meta_language_code || t.language}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1.5 justify-end">
+                        <button
+                          onClick={() => setViewId(viewId === t.id ? null : t.id)}
+                          className={`p-1.5 rounded-lg hover:bg-muted ${viewId === t.id ? "text-accent" : ""}`}
+                          title="View message text"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
                         {(t.provider || "") !== "meta" && (
                           <>
                         <button
@@ -288,6 +298,14 @@ const Templates = () => {
                       </div>
                     </td>
                   </tr>
+                  {viewId === t.id && (
+                    <tr className="border-b border-border/60">
+                      <td colSpan={8} className="px-4 pb-4">
+                        <TemplatePreview templateId={t.id} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

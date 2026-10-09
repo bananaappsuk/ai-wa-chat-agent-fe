@@ -1,4 +1,5 @@
 import AppLayout from "@/components/AppLayout";
+import TemplatePreview from "@/components/TemplatePreview";
 import { Upload, Send, X, FileSpreadsheet, Trash2, Eye, MessageCircle, AlertCircle } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -429,6 +430,7 @@ const WhatsAppBlast = () => {
                   ))}
                 </select>
               </div>
+              {selectedTemplateId && <TemplatePreview templateId={selectedTemplateId} />}
               {selectedTemplateId &&
                 blastVarKeys.map((key) => (
                   <div key={key}>

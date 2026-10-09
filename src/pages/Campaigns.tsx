@@ -1,4 +1,5 @@
 import AppLayout from "@/components/AppLayout";
+import TemplatePreview from "@/components/TemplatePreview";
 import { Plus, Search, Play, Pause, Pencil, X, Trash2, RotateCcw, Eye, Square } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -965,6 +966,11 @@ const Campaigns = () => {
                           </option>
                         ))}
                       </select>
+                      {form.fallback_template_id && (
+                        <div className="mt-2">
+                          <TemplatePreview templateId={form.fallback_template_id} />
+                        </div>
+                      )}
                       <p className="text-[11px] text-muted-foreground mt-1">
                         Used for closed 24h windows. Choose manually — nothing is auto-selected. Same
                         approved templates that already work in Template campaigns. Under Review templates
@@ -1022,6 +1028,7 @@ const Campaigns = () => {
                       ))}
                     </select>
                   </div>
+                  {form.template_id && <TemplatePreview templateId={form.template_id} />}
                   {templateVarKeys.map((key) => (
                     <div key={key}>
                       <label className="text-sm text-muted-foreground mb-1.5 block">Variable {`{{${key}}}`}</label>
