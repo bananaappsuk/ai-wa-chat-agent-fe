@@ -225,22 +225,28 @@ const Billing = () => {
                   <span className="text-muted-foreground"> · {sub.billing_cycle || "Monthly"}</span>
                 </p>
               )}
-              <p className="text-sm text-muted-foreground mt-2">
-                Status:{" "}
-                <span className="capitalize text-foreground">
-                  {(sub?.subscription_status || "none").replace(/_/g, " ")}
-                </span>
-              </p>
-              {sub?.current_period_start && (
+              {sub?.manual_plan ? (
+                <p className="text-sm mt-2 inline-flex items-center gap-2 rounded-full bg-accent/10 text-accent px-3 py-1">
+                  Assigned by admin — not billed through Stripe
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground mt-2">
+                  Status:{" "}
+                  <span className="capitalize text-foreground">
+                    {(sub?.subscription_status || "none").replace(/_/g, " ")}
+                  </span>
+                </p>
+              )}
+              {!sub?.manual_plan && sub?.current_period_start && (
                 <p className="text-sm text-muted-foreground">Period start {formatIso(sub.current_period_start)}</p>
               )}
-              {sub?.current_period_end && (
+              {!sub?.manual_plan && sub?.current_period_end && (
                 <p className="text-sm text-muted-foreground">
                   Renews / period ends {formatIso(sub.current_period_end)}
                   {sub.cancel_at_period_end ? " · Cancels at period end" : ""}
                 </p>
               )}
-              {(sub?.trial_ends_at || sub?.subscription_status === "trialing") && (
+              {!sub?.manual_plan && (sub?.trial_ends_at || sub?.subscription_status === "trialing") && (
                 <p className="text-sm text-muted-foreground">
                   Trial{sub?.trial_start ? ` ${formatIso(sub.trial_start)} →` : ""} ends{" "}
                   {formatIso(sub.trial_ends_at)}
@@ -249,7 +255,7 @@ const Billing = () => {
                     : ""}
                 </p>
               )}
-              {sub?.last_payment_status && (
+              {!sub?.manual_plan && sub?.last_payment_status && (
                 <p className="text-sm text-muted-foreground">
                   Last payment: <span className="capitalize text-foreground">{sub.last_payment_status}</span>
                   {sub.last_payment_at ? ` · ${formatIso(sub.last_payment_at)}` : ""}

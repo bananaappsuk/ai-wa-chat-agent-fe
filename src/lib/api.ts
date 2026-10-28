@@ -1300,6 +1300,7 @@ export type BillingSubscription = {
   price_display?: string | null;
   billing_cycle?: string;
   subscription_status: string;
+  manual_plan?: boolean;
   stripe_mode?: string;
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
