@@ -28,12 +28,14 @@ const latestInboundProvider = (msgs: Message[]): "twilio" | "meta" => {
 };
 
 /** Resolve stored template placeholders like [template:HX…] to a readable label. */
-const formatChatMessageText = (
+export const formatChatMessageText = (
   message: Message,
   templates: WaTemplate[],
 ): string => {
   const raw = (message.message || "").trim();
   const bracket = raw.match(/^\[template:(.+)\]$/i);
+  const placeholder = !raw || !!bracket || /^HX[0-9a-f]{32}$/i.test(raw) || /^Template:\s/i.test(raw);
+  if (!placeholder) return message.message || "";
   const sid = message.content_sid || (bracket?.[1]?.startsWith("HX") ? bracket[1] : undefined);
   const key = bracket?.[1];
 
