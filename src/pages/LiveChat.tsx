@@ -27,6 +27,15 @@ const latestInboundProvider = (msgs: Message[]): "twilio" | "meta" => {
   return "twilio";
 };
 
+export const mergeHotAndRecent = (hot: Lead[], recent: Lead[]): Lead[] => {
+  const byId = new Map<string, Lead>();
+  for (const l of [...hot, ...recent]) if (!byId.has(l.id)) byId.set(l.id, l);
+  return [...byId.values()];
+};
+
+export const hotFirst = (leads: Lead[]): Lead[] =>
+  [...leads].sort((a, b) => Number(b.score === "hot") - Number(a.score === "hot"));
+
 /** Resolve stored template placeholders like [template:HX…] to a readable label. */
 export const formatChatMessageText = (
   message: Message,
@@ -139,6 +148,8 @@ const LiveChat = () => {
   const [onlyUnanswered, setOnlyUnanswered] = useState(false);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [nextPage, setNextPage] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [showNewChat, setShowNewChat] = useState(false);
   const [newChatForm, setNewChatForm] = useState({ name: "", phone: "" });
   const [approvedTemplates, setApprovedTemplates] = useState<WaTemplate[]>([]);
@@ -173,14 +184,32 @@ const LiveChat = () => {
 
   const fetchConversations = useCallback(async () => {
     try {
-      const data = await leadsApi.list({ page: 1, page_size: 50, sort_by: "updated_at", sort_order: "desc" });
-      setLeads(data.items);
+      const [hot, recent] = await Promise.all([
+        leadsApi.list({ page: 1, page_size: 100, score: "hot", sort_by: "updated_at", sort_order: "desc" }),
+        leadsApi.list({ page: 1, page_size: 50, sort_by: "updated_at", sort_order: "desc" }),
+      ]);
+      setLeads((prev) => mergeHotAndRecent(hot.items, [...recent.items, ...prev]));
+      setNextPage((cur) => cur ?? (recent.has_next ? 2 : null));
     } catch (err) {
       toast.error("Failed to load leads", { description: (err as Error).message });
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const loadMoreConversations = useCallback(async () => {
+    if (!nextPage || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await leadsApi.list({ page: nextPage, page_size: 50, sort_by: "updated_at", sort_order: "desc" });
+      setLeads((prev) => mergeHotAndRecent(prev, data.items));
+      setNextPage(data.has_next ? nextPage + 1 : 0);
+    } catch (err) {
+      toast.error("Failed to load more conversations", { description: (err as Error).message });
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [nextPage, loadingMore]);
 
   const fetchMessages = useCallback(async (leadId: string) => {
     try {
@@ -424,11 +453,11 @@ const LiveChat = () => {
   };
 
   const unansweredCount = leads.filter((l) => l.missed_reply).length;
-  const filteredLeads = leads.filter(
+  const filteredLeads = hotFirst(leads.filter(
     (l) =>
       (!onlyUnanswered || !!l.missed_reply) &&
       (l.name.toLowerCase().includes(searchQuery.toLowerCase()) || (l.phone || "").includes(searchQuery)),
-  );
+  ));
 
   const initials = (name: string) => name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
   const aiPaused = !!activeLead?.ai_paused;
@@ -500,7 +529,13 @@ const LiveChat = () => {
             </button>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          <div
+            className="flex-1 min-h-0 overflow-y-auto"
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) loadMoreConversations();
+            }}
+          >
             {loading ? (
               <div className="p-8 text-center text-muted-foreground text-sm">Loading...</div>
             ) : filteredLeads.length === 0 ? (
@@ -564,6 +599,7 @@ const LiveChat = () => {
                 </button>
               ))
             )}
+            {loadingMore && <div className="p-4 text-center text-muted-foreground text-xs">Loading more…</div>}
           </div>
         </div>
 
