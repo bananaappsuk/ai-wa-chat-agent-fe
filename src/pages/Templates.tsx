@@ -1,11 +1,11 @@
 import AppLayout from "@/components/AppLayout";
 import TemplatePreview from "@/components/TemplatePreview";
 import CreateWhatsAppTemplate from "@/components/CreateWhatsAppTemplate";
-import { Plus, Pencil, Trash2, X, RefreshCw, Copy, Eye, Send } from "lucide-react";
+import { Plus, Pencil, Trash2, X, RefreshCw, Copy, Eye, Send, CopyPlus } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { templates as templatesApi, TemplateStatus, WaTemplate } from "@/lib/api";
+import { templates as templatesApi, TemplateStatus, WaTemplate, WhatsAppTemplateDraft } from "@/lib/api";
 
 const STATUSES: TemplateStatus[] = ["draft", "pending", "approved", "rejected"];
 
@@ -38,6 +38,8 @@ const Templates = () => {
   const [viewId, setViewId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showCreateWa, setShowCreateWa] = useState(false);
+  const [duplicateFrom, setDuplicateFrom] = useState<Partial<WhatsAppTemplateDraft> | undefined>(undefined);
+  const [deleting, setDeleting] = useState<WaTemplate | null>(null);
   const [editing, setEditing] = useState<WaTemplate | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -147,15 +149,37 @@ const Templates = () => {
     }
   };
 
-  const handleDelete = async (t: WaTemplate) => {
-    if (!confirm(`Delete template "${t.name}"?`)) return;
+  const handleDelete = async (t: WaTemplate, remote: boolean) => {
     try {
-      await templatesApi.remove(t.id);
-      toast.success("Template deleted");
+      await templatesApi.remove(t.id, remote);
+      toast.success(remote ? "Template deleted from WhatsApp and the app" : "Template removed from the app");
+      setDeleting(null);
       await load();
     } catch (err) {
       toast.error("Delete failed", { description: (err as Error).message });
     }
+  };
+
+  const duplicate = async (t: WaTemplate) => {
+    let body = t.template_body || "";
+    if (!body) {
+      try {
+        body = (await templatesApi.preview(t.id)).body || "";
+      } catch {
+        body = "";
+      }
+    }
+    setDuplicateFrom({
+      name: `${t.name} (copy)`,
+      category: t.whatsapp_category === "UTILITY" ? "UTILITY" : "MARKETING",
+      language: ["en", "en_GB", "en_US"].includes(t.language) ? t.language : "en",
+      header_text: t.header_text || "",
+      body,
+      footer: t.footer || "",
+      buttons: t.buttons || [],
+      samples: t.samples || {},
+    });
+    setShowCreateWa(true);
   };
 
   const refreshOne = async (t: WaTemplate) => {
@@ -319,8 +343,11 @@ const Templates = () => {
                         </button>
                           </>
                         )}
+                        <button onClick={() => duplicate(t)} className="p-1.5 rounded-lg hover:bg-muted" title="Duplicate & edit">
+                          <CopyPlus className="w-4 h-4" />
+                        </button>
                         <button
-                          onClick={() => handleDelete(t)}
+                          onClick={() => setDeleting(t)}
                           className="p-1.5 rounded-lg hover:bg-muted text-destructive"
                           title="Delete"
                         >
@@ -384,12 +411,42 @@ const Templates = () => {
 
       {showCreateWa && (
         <CreateWhatsAppTemplate
-          onClose={() => setShowCreateWa(false)}
+          initial={duplicateFrom}
+          onClose={() => {
+            setShowCreateWa(false);
+            setDuplicateFrom(undefined);
+          }}
           onCreated={(t) => {
             setShowCreateWa(false);
+            setDuplicateFrom(undefined);
             setItems((prev) => [t, ...prev]);
           }}
         />
+      )}
+
+      {deleting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-card rounded-2xl w-full max-w-md p-6 space-y-4">
+            <h2 className="text-lg font-display font-bold">Delete "{deleting.name}"?</h2>
+            <p className="text-sm text-muted-foreground">
+              Removing it from the app keeps it on WhatsApp (you can add it back by its Content SID). Deleting it from
+              WhatsApp too can't be undone.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button onClick={() => handleDelete(deleting, false)} className="py-3 rounded-xl glass glass-border text-sm font-medium">
+                Remove from the app only
+              </button>
+              {(deleting.provider || "twilio_content") !== "meta" && deleting.content_sid && (
+                <button onClick={() => handleDelete(deleting, true)} className="py-3 rounded-xl bg-destructive text-destructive-foreground text-sm font-medium">
+                  Delete from WhatsApp too
+                </button>
+              )}
+              <button onClick={() => setDeleting(null)} className="py-2 text-sm text-muted-foreground">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showForm && (

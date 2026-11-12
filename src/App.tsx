@@ -19,6 +19,7 @@ import Knowledge from "./pages/Knowledge";
 import LiveChat from "./pages/LiveChat";
 import Settings from "./pages/Settings";
 import WhatsAppTemplatesSettings from "./pages/WhatsAppTemplatesSettings";
+import WhatsAppNumbers from "./pages/WhatsAppNumbers";
 import AdminPanel from "./pages/AdminPanel";
 import Activity from "./pages/Activity";
 import AiAnalytics from "./pages/AiAnalytics";
@@ -54,6 +55,7 @@ const App = () => (
             <Route path="/ai-analytics" element={<ProtectedRoute><AiAnalytics /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/settings/whatsapp-templates" element={<ProtectedRoute><WhatsAppTemplatesSettings /></ProtectedRoute>} />
+            <Route path="/settings/whatsapp-numbers" element={<ProtectedRoute><WhatsAppNumbers /></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
             <Route path="/help" element={<ProtectedRoute><Help /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPanel /></ProtectedRoute>} />

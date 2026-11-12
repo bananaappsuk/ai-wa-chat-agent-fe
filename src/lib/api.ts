@@ -479,6 +479,11 @@ export type WaTemplate = {
   whatsapp_approval_status?: string | null;
   whatsapp_rejection_reason?: string | null;
   created_via?: string | null;
+  template_body?: string | null;
+  header_text?: string | null;
+  footer?: string | null;
+  buttons?: TemplateButtonDraft[] | null;
+  samples?: Record<string, string> | null;
   whatsapp_approval_label?: string | null;
   whatsapp_approval_emoji?: string | null;
   whatsapp_category?: string | null;
@@ -537,7 +542,7 @@ export const templates = {
   preview: (id: string) => api.get<{ id: string; name: string; body: string }>(`/templates/${id}/preview`),
   create: (b: Partial<WaTemplate>) => api.post<WaTemplate>("/templates", b),
   update: (id: string, b: Partial<WaTemplate>) => api.patch<WaTemplate>(`/templates/${id}`, b),
-  remove: (id: string) => api.del<void>(`/templates/${id}`),
+  remove: (id: string, remote = false) => api.del<void>(`/templates/${id}${remote ? "?remote=true" : ""}`),
   refreshStatus: (id: string) => api.post<WaTemplate>(`/templates/${id}/refresh-status`, {}),
   createWhatsApp: (b: WhatsAppTemplateDraft) => api.post<WaTemplate>("/templates/whatsapp", b),
   syncMeta: () => api.post<{ ok: boolean; synced: number; skipped?: number; fetched?: number }>("/templates/sync-meta", {}),
@@ -759,6 +764,7 @@ export const agents = {
 };
 
 export type Campaign = {
+  sender_number?: string | null;
   id: string;
   pause_reason?: string | null;
   user_id?: string;
@@ -984,6 +990,33 @@ export type PreparedRecipients = {
   summary: Partial<Record<ContactStatus, number>>;
 };
 
+export type WhatsAppSender = {
+  id: string;
+  phone: string;
+  label?: string | null;
+  display_name?: string | null;
+  twilio_status?: string | null;
+  quality?: string | null;
+  messaging_limit?: string | null;
+  webhook_ok?: boolean;
+  callback_url?: string | null;
+  status_callback_url?: string | null;
+  enabled: boolean;
+  is_default: boolean;
+  restricted?: boolean;
+  restricted_code?: string | null;
+  synced_at?: string | null;
+};
+
+export type SenderListing = { senders: WhatsAppSender[]; env_sender: string | null };
+
+export const sendersApi = {
+  list: () => api.get<SenderListing>("/whatsapp-senders"),
+  sync: () => api.post<SenderListing>("/whatsapp-senders/sync", {}),
+  update: (id: string, b: { label?: string; enabled?: boolean; is_default?: boolean }) => api.patch<SenderListing>(`/whatsapp-senders/${id}`, b),
+  fixWebhook: (id: string) => api.post<SenderListing>(`/whatsapp-senders/${id}/fix-webhook`, {}),
+};
+
 export const blasts = {
   list: () => api.get<Blast[]>("/blasts"),
   create: (b: {
@@ -991,6 +1024,7 @@ export const blasts = {
     message?: string;
     recipients: string[];
     contacts?: Array<{ phone: string; name?: string }>;
+    sender?: string;
     template_id?: string;
     content_variables?: Record<string, string>;
     media_url?: string;

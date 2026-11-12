@@ -220,6 +220,12 @@ const Settings = () => {
         >
           WhatsApp Templates — Meta approval status & Content SIDs
         </Link>
+        <Link
+          to="/settings/whatsapp-numbers"
+          className="inline-flex items-center gap-2 mb-8 ml-2 px-4 py-2.5 rounded-xl border border-accent/30 bg-accent/10 text-sm hover:border-accent/50 transition-colors"
+        >
+          WhatsApp numbers — choose senders, status & quality
+        </Link>
 
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">

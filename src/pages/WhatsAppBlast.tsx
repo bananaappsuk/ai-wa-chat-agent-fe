@@ -1,5 +1,6 @@
 import AppLayout from "@/components/AppLayout";
 import TemplatePreview from "@/components/TemplatePreview";
+import SenderSelect from "@/components/SenderSelect";
 import { Upload, Send, X, FileSpreadsheet, Trash2, Eye, MessageCircle, AlertCircle, Pause, Play, RotateCcw, Download } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -64,6 +65,7 @@ const WhatsAppBlast = () => {
   const [activeTab, setActiveTab] = useState("");
   const workbookRef = useRef<XLSX.WorkBook | null>(null);
   const [campaignName, setCampaignName] = useState("");
+  const [sender, setSender] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState({ sent: 0, failed: 0, total: 0 });
@@ -280,6 +282,7 @@ const WhatsAppBlast = () => {
         message: selectedTemplateId ? message.trim() || undefined : message.trim() || undefined,
         recipients: validNumbers.map((n) => n.phone as string),
         contacts: validNumbers.map((n) => ({ phone: n.phone as string, name: n.name || undefined })),
+        sender: !isMetaTpl ? sender || undefined : undefined,
         template_id: selectedTemplateId || undefined,
         content_variables:
           selectedTemplateId && Object.keys(templateVars).length ? templateVars : undefined,
@@ -455,6 +458,7 @@ const WhatsAppBlast = () => {
                   className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
                 />
               </div>
+              {!isMetaTpl && <SenderSelect value={sender} onChange={setSender} />}
               <div>
                 <label className="text-sm text-muted-foreground mb-1.5 block">Approved Template (required outside 24h window)</label>
                 <select

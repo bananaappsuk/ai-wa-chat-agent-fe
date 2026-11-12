@@ -43,9 +43,9 @@ const fill = (text: string, samples: Record<string, string>) =>
 
 const input = "w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30";
 
-type Props = { onClose: () => void; onCreated: (t: WaTemplate) => void };
+type Props = { onClose: () => void; onCreated: (t: WaTemplate) => void; initial?: Partial<WhatsAppTemplateDraft> };
 
-const CreateWhatsAppTemplate = ({ onClose, onCreated }: Props) => {
+const CreateWhatsAppTemplate = ({ onClose, onCreated, initial }: Props) => {
   const [draft, setDraft] = useState<WhatsAppTemplateDraft>({
     name: "",
     category: "MARKETING",
@@ -55,6 +55,7 @@ const CreateWhatsAppTemplate = ({ onClose, onCreated }: Props) => {
     footer: "",
     buttons: [],
     samples: {},
+    ...initial,
   });
   const [saving, setSaving] = useState(false);
   const [triedSubmit, setTriedSubmit] = useState(false);
@@ -103,7 +104,7 @@ const CreateWhatsAppTemplate = ({ onClose, onCreated }: Props) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="bg-card rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-display font-bold">Create WhatsApp template</h2>
+          <h2 className="text-xl font-display font-bold">{initial ? "Duplicate & edit template" : "Create WhatsApp template"}</h2>
           <button onClick={onClose} aria-label="Close">
             <X className="w-5 h-5 text-muted-foreground" />
           </button>

@@ -1,5 +1,6 @@
 import AppLayout from "@/components/AppLayout";
 import TemplatePreview from "@/components/TemplatePreview";
+import SenderSelect from "@/components/SenderSelect";
 import { Plus, Search, Play, Pause, Pencil, X, Trash2, RotateCcw, Eye, Square } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -44,6 +45,7 @@ const Campaigns = () => {
   const [agentOptions, setAgentOptions] = useState<AgentCampaignOption[]>([]);
   const [aiPreviews, setAiPreviews] = useState<Array<Record<string, unknown>>>([]);
 
+  const [sender, setSender] = useState("");
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -173,6 +175,7 @@ const Campaigns = () => {
   });
 
   const openNew = () => {
+    setSender("");
     setEditingId(null);
     setForm(emptyForm());
     setAttachment(null);
@@ -185,6 +188,7 @@ const Campaigns = () => {
       toast.error("Only draft or scheduled campaigns can be edited");
       return;
     }
+    setSender(c.sender_number || "");
     try {
       const full = await campaignsApi.get(c.id);
       const rec = await campaignsApi.recipients(c.id);
@@ -290,6 +294,7 @@ const Campaigns = () => {
     const fallbackTpl = needsFallback ? form.fallback_template_id || null : null;
     const payload: Record<string, unknown> = {
       name: form.name.trim(),
+      sender: sender || undefined,
       description: form.description.trim() || null,
       message: useAgent ? null : form.message.trim() || null,
       template_id: useAgent ? (needsFallback ? fallbackTpl : null) : form.template_id || null,
@@ -834,6 +839,7 @@ const Campaigns = () => {
                   className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
                 />
               </div>
+              <SenderSelect key={editingId || "new"} value={sender} onChange={setSender} />
               <div>
                 <label className="text-sm text-muted-foreground mb-1.5 block">Description</label>
                 <input
