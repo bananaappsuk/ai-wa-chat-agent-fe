@@ -477,6 +477,8 @@ export type WaTemplate = {
   created_at: string;
   updated_at: string;
   whatsapp_approval_status?: string | null;
+  whatsapp_rejection_reason?: string | null;
+  created_via?: string | null;
   whatsapp_approval_label?: string | null;
   whatsapp_approval_emoji?: string | null;
   whatsapp_category?: string | null;
@@ -494,6 +496,24 @@ export type WaTemplate = {
   send_supported?: boolean;
   send_unsupported_reason?: string | null;
   whatsapp_approval_status_raw?: string | null;
+};
+
+export type TemplateButtonDraft = {
+  type: "URL" | "PHONE_NUMBER" | "QUICK_REPLY";
+  title: string;
+  url?: string;
+  phone?: string;
+};
+
+export type WhatsAppTemplateDraft = {
+  name: string;
+  category: "MARKETING" | "UTILITY";
+  language: string;
+  header_text?: string;
+  body: string;
+  footer?: string;
+  buttons: TemplateButtonDraft[];
+  samples: Record<string, string>;
 };
 
 export const templates = {
@@ -519,6 +539,7 @@ export const templates = {
   update: (id: string, b: Partial<WaTemplate>) => api.patch<WaTemplate>(`/templates/${id}`, b),
   remove: (id: string) => api.del<void>(`/templates/${id}`),
   refreshStatus: (id: string) => api.post<WaTemplate>(`/templates/${id}/refresh-status`, {}),
+  createWhatsApp: (b: WhatsAppTemplateDraft) => api.post<WaTemplate>("/templates/whatsapp", b),
   syncMeta: () => api.post<{ ok: boolean; synced: number; skipped?: number; fetched?: number }>("/templates/sync-meta", {}),
 };
 
@@ -946,17 +967,37 @@ export type Blast = {
   created_at: string;
 };
 
+export type ContactStatus = "ok" | "duplicate" | "invalid" | "landline" | "international" | "opted_out" | "already_sent";
+
+export type PreparedContact = {
+  row: number;
+  name: string;
+  phone: string | null;
+  raw: string;
+  status: ContactStatus;
+  note: string | null;
+};
+
+export type PreparedRecipients = {
+  columns: Record<string, number>;
+  contacts: PreparedContact[];
+  summary: Partial<Record<ContactStatus, number>>;
+};
+
 export const blasts = {
   list: () => api.get<Blast[]>("/blasts"),
   create: (b: {
     name: string;
     message?: string;
     recipients: string[];
+    contacts?: Array<{ phone: string; name?: string }>;
     template_id?: string;
     content_variables?: Record<string, string>;
     media_url?: string;
     message_purpose?: string;
   }) => api.post<Blast>("/blasts", b),
+  prepareRecipients: (b: { rows: unknown[][]; template_id?: string }) =>
+    api.post<PreparedRecipients>("/blasts/prepare-recipients", b),
   recipients: (id: string) => api.get<Array<{ id: string; phone: string; status: string; error?: string }>>(`/blasts/${id}/recipients`),
   remove: (id: string) => api.del<void>(`/blasts/${id}`),
   pause: (id: string) => api.post<Blast>(`/blasts/${id}/pause`, {}),

@@ -1,6 +1,7 @@
 import AppLayout from "@/components/AppLayout";
 import TemplatePreview from "@/components/TemplatePreview";
-import { Plus, Pencil, Trash2, X, RefreshCw, Copy, Eye } from "lucide-react";
+import CreateWhatsAppTemplate from "@/components/CreateWhatsAppTemplate";
+import { Plus, Pencil, Trash2, X, RefreshCw, Copy, Eye, Send } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -36,6 +37,7 @@ const Templates = () => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [viewId, setViewId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showCreateWa, setShowCreateWa] = useState(false);
   const [editing, setEditing] = useState<WaTemplate | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -59,6 +61,24 @@ const Templates = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  const awaitingIds = items.filter((t) => t.created_via === "app" && t.status === "pending").map((t) => t.id).join(",");
+  useEffect(() => {
+    if (!awaitingIds) return;
+    const timer = setInterval(async () => {
+      for (const id of awaitingIds.split(",")) {
+        try {
+          const updated = await templatesApi.refreshStatus(id);
+          setItems((prev) => prev.map((x) => (x.id === id ? updated : x)));
+          if (updated.status === "approved") toast.success(`${updated.name} approved by WhatsApp`, { description: "You can now send it from WA Blast or Campaigns." });
+          if (updated.status === "rejected") toast.error(`${updated.name} rejected by WhatsApp`, { description: updated.whatsapp_rejection_reason || undefined });
+        } catch {
+          continue;
+        }
+      }
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [awaitingIds]);
 
   const openCreate = () => {
     setEditing(null);
@@ -199,9 +219,15 @@ const Templates = () => {
           </button>
           <button
             onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass glass-border text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" /> Add by Content SID
+          </button>
+          <button
+            onClick={() => setShowCreateWa(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl gradient-green text-primary-foreground text-sm font-medium"
           >
-            <Plus className="w-4 h-4" /> New Template
+            <Send className="w-4 h-4" /> Create WhatsApp template
           </button>
         </div>
       </div>
@@ -248,7 +274,12 @@ const Templates = () => {
                     <td className="px-4 py-3 text-xs">
                       {(t.provider || "twilio_content") === "meta" ? "Meta" : "Twilio"}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">{metaLabel(t)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {metaLabel(t)}
+                      {t.whatsapp_rejection_reason && (
+                        <span className="block text-xs text-red-400 whitespace-normal">{t.whatsapp_rejection_reason}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">{t.whatsapp_category || "—"}</td>
                     <td className="px-4 py-3 font-mono text-xs">
                       {(t.provider || "") === "meta"
@@ -350,6 +381,16 @@ const Templates = () => {
           </div>
         </div>
       </div>
+
+      {showCreateWa && (
+        <CreateWhatsAppTemplate
+          onClose={() => setShowCreateWa(false)}
+          onCreated={(t) => {
+            setShowCreateWa(false);
+            setItems((prev) => [t, ...prev]);
+          }}
+        />
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">

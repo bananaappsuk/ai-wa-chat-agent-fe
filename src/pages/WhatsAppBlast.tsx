@@ -1,38 +1,68 @@
 import AppLayout from "@/components/AppLayout";
 import TemplatePreview from "@/components/TemplatePreview";
-import { Upload, Send, X, FileSpreadsheet, Trash2, Eye, MessageCircle, AlertCircle, Pause, Play, RotateCcw } from "lucide-react";
+import { Upload, Send, X, FileSpreadsheet, Trash2, Eye, MessageCircle, AlertCircle, Pause, Play, RotateCcw, Download } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { blasts as blastsApi, templates as templatesApi, mediaApi, Blast, WaTemplate, MediaUploadResult } from "@/lib/api";
+import { blasts as blastsApi, templates as templatesApi, mediaApi, Blast, WaTemplate, MediaUploadResult, PreparedContact, ContactStatus } from "@/lib/api";
 import { ChatSocket } from "@/lib/ws";
 
 const BLAST_PURPOSES = ["conversational", "support", "transactional", "marketing"] as const;
 
-interface ParsedNumber {
-  phone: string;
-  valid: boolean;
-}
-
-const normalizePhone = (raw: string): { phone: string; valid: boolean } => {
-  let cleaned = String(raw).replace(/[^0-9+]/g, "");
-  if (!cleaned.startsWith("+")) {
-    if (cleaned.startsWith("0")) cleaned = "+44" + cleaned.slice(1);
-    else if (cleaned.startsWith("44")) cleaned = "+" + cleaned;
-    else cleaned = "+" + cleaned;
-  }
-  const valid = /^\+\d{10,15}$/.test(cleaned);
-  return { phone: cleaned, valid };
+const STATUS_LABEL: Record<ContactStatus, string> = {
+  ok: "Ready",
+  duplicate: "Duplicate",
+  invalid: "Invalid",
+  landline: "Landline",
+  international: "International",
+  opted_out: "Opted out",
+  already_sent: "Already sent",
 };
+
+const STATUS_STYLE: Record<ContactStatus, string> = {
+  ok: "bg-accent/10 text-accent",
+  duplicate: "bg-muted-foreground/10 text-muted-foreground",
+  invalid: "bg-destructive/10 text-destructive",
+  landline: "bg-yellow-500/10 text-yellow-400",
+  international: "bg-yellow-500/10 text-yellow-400",
+  opted_out: "bg-destructive/10 text-destructive",
+  already_sent: "bg-blue-500/10 text-blue-400",
+};
+
+type OptionalStatus = "landline" | "international" | "already_sent";
+
+export const SAMPLE_SHEET_ROWS = [
+  ["First Name", "Last Name", "Mobile Number"],
+  ["Jane", "Smith", "07700 900123"],
+  ["John", "Brown", "+44 7700 900456"],
+];
+
+export const downloadSampleSheet = () => {
+  const ws = XLSX.utils.aoa_to_sheet(SAMPLE_SHEET_ROWS);
+  ws["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 18 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Contacts");
+  XLSX.writeFile(wb, "wa-blast-contacts-sample.xlsx");
+};
+
+export const isSendable = (c: PreparedContact, include: Record<OptionalStatus, boolean>) =>
+  !!c.phone && (c.status === "ok" || ((c.status === "landline" || c.status === "international" || c.status === "already_sent") && include[c.status]));
 
 const WhatsAppBlast = () => {
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState<"upload" | "configure" | "review" | "sending">("upload");
-  const [parsedNumbers, setParsedNumbers] = useState<ParsedNumber[]>([]);
+  const [parsedNumbers, setParsedNumbers] = useState<PreparedContact[]>([]);
   const [fileName, setFileName] = useState("");
+  const [sourceRows, setSourceRows] = useState<unknown[][]>([]);
+  const [removed, setRemoved] = useState<Set<number>>(new Set());
+  const [include, setInclude] = useState<Record<OptionalStatus, boolean>>({ landline: false, international: false, already_sent: false });
+  const [checking, setChecking] = useState(false);
+  const [tabs, setTabs] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState("");
+  const workbookRef = useRef<XLSX.WorkBook | null>(null);
   const [campaignName, setCampaignName] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -146,68 +176,71 @@ const WhatsAppBlast = () => {
     };
   }, [user]);
 
+  const checkRows = async (rows: unknown[][], label: string, templateId?: string) => {
+    if (!rows.length) {
+      toast.error("No rows found");
+      return;
+    }
+    setChecking(true);
+    try {
+      const res = await blastsApi.prepareRecipients({ rows, template_id: templateId || undefined });
+      if (!res.contacts.some((c) => c.phone)) {
+        toast.error("No phone numbers found", { description: "Use a column called Mobile Number, Mobile No or Phone Number — or download the sample sheet." });
+        return;
+      }
+      setParsedNumbers(res.contacts);
+      setSourceRows(rows);
+      setFileName(label);
+      const ready = res.summary.ok || 0;
+      toast.success(`${ready} number${ready === 1 ? "" : "s"} ready`, {
+        description: Object.entries(res.summary)
+          .filter(([k]) => k !== "ok")
+          .map(([k, v]) => `${v} ${STATUS_LABEL[k as ContactStatus].toLowerCase()}`)
+          .join(", ") || undefined,
+      });
+      setStep("configure");
+    } catch (err) {
+      toast.error("Couldn't check the numbers", { description: (err as Error).message });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const readTab = (wb: XLSX.WorkBook, tab: string, label: string) => {
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[tab], { header: 1, raw: true, defval: "" });
+    setActiveTab(tab);
+    setRemoved(new Set());
+    return checkRows(rows, label, selectedTemplateId);
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
-
-    const validTypes = [
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "application/vnd.ms-excel",
-      "text/csv",
-    ];
-    if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls|csv)$/i)) {
+    if (!file.name.match(/\.(xlsx|xls|csv)$/i)) {
       toast.error("Please upload an Excel (.xlsx, .xls) or CSV file");
       return;
     }
-
-    setFileName(file.name);
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const data = new Uint8Array(evt.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-        const numbers: ParsedNumber[] = [];
-        const seen = new Set<string>();
-
-        for (const row of rows) {
-          for (const cell of row) {
-            if (!cell) continue;
-            const str = String(cell).trim();
-            if (!str || str.length < 5) continue;
-            if (/^(phone|number|mobile|tel|contact|name|email)/i.test(str)) continue;
-            if (/\d{7,}/.test(str.replace(/[^0-9]/g, ""))) {
-              const { phone, valid } = normalizePhone(str);
-              if (!seen.has(phone)) {
-                seen.add(phone);
-                numbers.push({ phone, valid });
-              }
-            }
-          }
-        }
-
-        if (numbers.length === 0) {
-          toast.error("No phone numbers found in the file");
-          return;
-        }
-
-        setParsedNumbers(numbers);
-        toast.success(`Found ${numbers.length} phone numbers (${numbers.filter(n => n.valid).length} valid)`);
-        setStep("configure");
+        const wb = XLSX.read(new Uint8Array(evt.target?.result as ArrayBuffer), { type: "array" });
+        workbookRef.current = wb;
+        setTabs(wb.SheetNames);
+        readTab(wb, wb.SheetNames[0], file.name);
       } catch {
-        toast.error("Failed to parse file");
+        toast.error("Couldn't read that file");
       }
     };
     reader.readAsArrayBuffer(file);
   };
 
   const removeNumber = (index: number) => {
-    setParsedNumbers(prev => prev.filter((_, i) => i !== index));
+    setRemoved((prev) => new Set(prev).add(index));
   };
 
-  const validNumbers = parsedNumbers.filter(n => n.valid);
+  const validNumbers = parsedNumbers.filter((c, i) => !removed.has(i) && isSendable(c, include));
+  const namedCount = validNumbers.filter((c) => c.name).length;
   const selectedTpl = approvedTemplates.find((t) => t.id === selectedTemplateId) || null;
   const isMetaTpl = selectedTpl?.provider === "meta";
   const blastVarKeys =
@@ -245,7 +278,8 @@ const WhatsAppBlast = () => {
       const created = await blastsApi.create({
         name: campaignName.trim(),
         message: selectedTemplateId ? message.trim() || undefined : message.trim() || undefined,
-        recipients: validNumbers.map((n) => n.phone),
+        recipients: validNumbers.map((n) => n.phone as string),
+        contacts: validNumbers.map((n) => ({ phone: n.phone as string, name: n.name || undefined })),
         template_id: selectedTemplateId || undefined,
         content_variables:
           selectedTemplateId && Object.keys(templateVars).length ? templateVars : undefined,
@@ -302,6 +336,12 @@ const WhatsAppBlast = () => {
     setStep("upload");
     setParsedNumbers([]);
     setFileName("");
+    setSourceRows([]);
+    setRemoved(new Set());
+    setInclude({ landline: false, international: false, already_sent: false });
+    setTabs([]);
+    setActiveTab("");
+    workbookRef.current = null;
     setCampaignName("");
     setMessage("");
     setManualInput("");
@@ -338,7 +378,8 @@ const WhatsAppBlast = () => {
               </div>
               <h2 className="text-lg font-display font-bold mb-2">Upload File</h2>
               <p className="text-sm text-muted-foreground mb-5">
-                Upload an Excel or CSV file with phone numbers.
+                Upload an Excel or CSV file with names and mobile numbers. Columns like First Name, Last Name,
+                Mobile No or Phone Number are found automatically and every number is checked before sending.
               </p>
               <input
                 ref={fileInputRef}
@@ -349,9 +390,17 @@ const WhatsAppBlast = () => {
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="px-6 py-3 rounded-xl gradient-green text-primary-foreground font-medium text-sm flex items-center gap-2 mx-auto"
+                disabled={checking}
+                className="px-6 py-3 rounded-xl gradient-green text-primary-foreground font-medium text-sm flex items-center gap-2 mx-auto disabled:opacity-50"
               >
-                <Upload className="w-4 h-4" /> Choose File
+                <Upload className="w-4 h-4" /> {checking ? "Checking…" : "Choose File"}
+              </button>
+              <button
+                type="button"
+                onClick={downloadSampleSheet}
+                className="mt-3 text-sm text-accent underline underline-offset-2 flex items-center gap-1 mx-auto"
+              >
+                <Download className="w-4 h-4" /> Download sample sheet
               </button>
               <p className="text-xs text-muted-foreground mt-3">Supported: .xlsx, .xls, .csv</p>
             </div>
@@ -376,28 +425,16 @@ const WhatsAppBlast = () => {
             />
             <button
               onClick={() => {
-                const lines = manualInput.split(/[\n,;]+/).map(l => l.trim()).filter(Boolean);
-                if (lines.length === 0) { toast.error("Enter at least one number"); return; }
-                const seen = new Set<string>();
-                const numbers: ParsedNumber[] = [];
-                for (const line of lines) {
-                  if (/^(phone|number|mobile|tel)/i.test(line)) continue;
-                  const { phone, valid } = normalizePhone(line);
-                  if (!seen.has(phone)) {
-                    seen.add(phone);
-                    numbers.push({ phone, valid });
-                  }
-                }
-                if (numbers.length === 0) { toast.error("No valid numbers found"); return; }
-                setParsedNumbers(numbers);
-                setFileName("manual entry");
-                toast.success(`Parsed ${numbers.length} numbers (${numbers.filter(n => n.valid).length} valid)`);
-                setStep("configure");
+                const rows = manualInput.split(/[\n,;]+/).map((l) => [l.trim()]).filter((r) => r[0]);
+                if (rows.length === 0) { toast.error("Enter at least one number"); return; }
+                setTabs([]);
+                setRemoved(new Set());
+                checkRows(rows, "manual entry", selectedTemplateId);
               }}
-              disabled={!manualInput.trim()}
+              disabled={!manualInput.trim() || checking}
               className="w-full mt-3 py-3 rounded-xl gradient-green text-sm font-medium text-primary-foreground disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              <Send className="w-4 h-4" /> Parse Numbers
+              <Send className="w-4 h-4" /> {checking ? "Checking…" : "Check Numbers"}
             </button>
           </div>
         </div>
@@ -434,6 +471,7 @@ const WhatsAppBlast = () => {
                       next[k] = templateVars[k] || "";
                     });
                     setTemplateVars(next);
+                    if (sourceRows.length) checkRows(sourceRows, fileName, id);
                   }}
                   className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
                 >
@@ -457,6 +495,11 @@ const WhatsAppBlast = () => {
                       onChange={(e) => setTemplateVars((prev) => ({ ...prev, [key]: e.target.value }))}
                       className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
                     />
+                    {key === "1" && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Leave empty to greet each person by first name ({namedCount} of {validNumbers.length} have a name; others get "there").
+                      </p>
+                    )}
                   </div>
                 ))}
               <div>
@@ -562,28 +605,79 @@ const WhatsAppBlast = () => {
           </div>
 
           <div className="bg-card rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3 gap-2">
               <h2 className="font-display font-semibold">
-                Uploaded Numbers
+                Numbers check
                 <span className="text-xs text-muted-foreground ml-2">({fileName})</span>
               </h2>
-              <span className="px-3 py-1 rounded-full bg-accent/10 text-accent text-xs font-medium">
-                {validNumbers.length} valid / {parsedNumbers.length} total
+              <span className="px-3 py-1 rounded-full bg-accent/10 text-accent text-xs font-medium whitespace-nowrap">
+                {validNumbers.length} to send
               </span>
             </div>
-            <div className="max-h-[400px] overflow-y-auto space-y-1.5">
-              {parsedNumbers.map((n, i) => (
-                <div key={i} className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${n.valid ? "bg-muted" : "bg-destructive/10"}`}>
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${n.valid ? "bg-accent" : "bg-destructive"}`} />
-                    <span className={n.valid ? "" : "text-destructive"}>{n.phone}</span>
-                    {!n.valid && <span className="text-[10px] text-destructive">INVALID</span>}
+            {tabs.length > 1 && (
+              <div className="mb-3 flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Sheet tab</span>
+                <select
+                  value={activeTab}
+                  onChange={(e) => workbookRef.current && readTab(workbookRef.current, e.target.value, fileName)}
+                  className="bg-muted rounded-lg px-3 py-1.5 text-sm"
+                >
+                  {tabs.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {(Object.keys(STATUS_LABEL) as ContactStatus[]).map((k) => {
+                const n = parsedNumbers.filter((c) => c.status === k).length;
+                return n ? (
+                  <span key={k} className={`px-2 py-0.5 rounded-full text-xs ${STATUS_STYLE[k]}`}>
+                    {n} {STATUS_LABEL[k].toLowerCase()}
+                  </span>
+                ) : null;
+              })}
+            </div>
+            {(["landline", "international", "already_sent"] as OptionalStatus[]).some((k) => parsedNumbers.some((c) => c.status === k)) && (
+              <div className="mb-3 space-y-1 text-sm">
+                {(["landline", "international", "already_sent"] as OptionalStatus[]).map((k) =>
+                  parsedNumbers.some((c) => c.status === k) ? (
+                    <label key={k} className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={include[k]} onChange={(e) => setInclude((p) => ({ ...p, [k]: e.target.checked }))} />
+                      {k === "landline" && "Also send to landlines (usually not on WhatsApp)"}
+                      {k === "international" && "Also send to non-UK numbers"}
+                      {k === "already_sent" && "Also send to people who already got this template"}
+                    </label>
+                  ) : null,
+                )}
+              </div>
+            )}
+            <div className="max-h-[420px] overflow-y-auto space-y-1.5">
+              {parsedNumbers.map((c, i) => {
+                const going = !removed.has(i) && isSendable(c, include);
+                return (
+                  <div key={i} className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm ${going ? "bg-muted" : "bg-muted/40 opacity-70"}`}>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium truncate">{c.name || "—"}</span>
+                        <span className="font-mono text-xs">{c.phone || c.raw || "no number"}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${STATUS_STYLE[c.status]}`}>{STATUS_LABEL[c.status]}</span>
+                        {removed.has(i) && <span className="text-[10px] text-muted-foreground">removed</span>}
+                      </div>
+                      {(c.note || (c.raw && c.phone && c.raw.replace(/\s/g, "") !== c.phone)) && (
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {c.note || `cleaned from "${c.raw}"`} · row {c.row}
+                        </p>
+                      )}
+                    </div>
+                    {going && (
+                      <button onClick={() => removeNumber(i)} className="p-1 hover:bg-muted rounded shrink-0" aria-label="Remove">
+                        <X className="w-3.5 h-3.5 text-muted-foreground" />
+                      </button>
+                    )}
                   </div>
-                  <button onClick={() => removeNumber(i)} className="p-1 hover:bg-muted rounded">
-                    <X className="w-3.5 h-3.5 text-muted-foreground" />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -620,7 +714,9 @@ const WhatsAppBlast = () => {
             <div className="bg-muted rounded-xl p-4">
               <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Recipients</p>
               <p className="text-2xl font-display font-bold text-accent">{validNumbers.length}</p>
-              <p className="text-xs text-muted-foreground">{parsedNumbers.length - validNumbers.length} invalid numbers excluded</p>
+              <p className="text-xs text-muted-foreground">
+                {namedCount} greeted by name · {parsedNumbers.length - validNumbers.length} not sent (duplicates, invalid, opted out or excluded)
+              </p>
             </div>
 
             <div className="flex gap-3 pt-2">
