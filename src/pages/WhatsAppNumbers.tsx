@@ -107,15 +107,7 @@ const WhatsAppNumbers = () => {
                       {s.phone}
                       {s.display_name && <span className="block text-xs text-muted-foreground font-sans">{s.display_name}</span>}
                     </td>
-                    <td className="px-4 py-3">
-                      <input
-                        defaultValue={s.label || ""}
-                        maxLength={60}
-                        placeholder="e.g. Show number"
-                        onBlur={(e) => e.target.value !== (s.label || "") && run(`label-${s.id}`, () => sendersApi.update(s.id, { label: e.target.value }), "Label saved")}
-                        className="bg-muted rounded-lg px-3 py-1.5 text-sm w-40"
-                      />
-                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{s.label || "—"}</td>
                     <td className="px-4 py-3">
                       {s.restricted ? (
                         <span className="text-destructive">⛔ Restricted by WhatsApp{s.restricted_code ? ` (${s.restricted_code})` : ""}</span>
